@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Veil Messenger — Говори свободно.</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0A0A0F;
+            color: #E0E0E0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            line-height: 1.6;
+        }
+        .container { max-width: 900px; margin: 0 auto; padding: 0 24px; }
+        header {
+            padding: 80px 0 60px;
+            text-align: center;
+            border-bottom: 1px solid #1A1A26;
+        }
+        .logo-img {
+            width: 100px; height: 100px;
+            border-radius: 20px;
+            margin: 0 auto 30px;
+            display: block;
+            object-fit: cover;
+        }
+        h1 {
+            font-family: 'Space Mono', monospace;
+            font-size: 42px;
+            font-weight: bold;
+            margin-bottom: 12px;
+            color: #4ADE80;
+        }
+        .tagline {
+            font-size: 18px;
+            color: #888899;
+            margin-bottom: 30px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 14px 32px;
+            border-radius: 12px;
+            font-family: 'Space Mono', monospace;
+            font-weight: 600;
+            font-size: 15px;
+            text-decoration: none;
+            margin: 6px;
+            transition: all 0.2s;
+        }
+        .btn-primary {
+            background: #4ADE80;
+            color: #0A0A0F;
+        }
+        .btn-primary:hover { background: #22C55E; }
+        .btn-outline {
+            border: 2px solid #2A2A3A;
+            color: #E0E0E0;
+        }
+        .btn-outline:hover { border-color: #4ADE80; color: #4ADE80; }
+        section { padding: 80px 0; }
+        h2 {
+            font-family: 'Space Mono', monospace;
+            font-size: 28px;
+            margin-bottom: 40px;
+            text-align: center;
+        }
+        h2 span { color: #4ADE80; }
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 24px;
+        }
+        .feature-card {
+            background: #14141F;
+            border: 1px solid #1A1A26;
+            border-radius: 16px;
+            padding: 30px;
+            text-align: center;
+            transition: all 0.3s;
+        }
+        .feature-card:hover {
+            border-color: #4ADE80;
+            transform: translateY(-4px);
+        }
+        .feature-icon { font-size: 36px; margin-bottom: 16px; }
+        .feature-card h3 { font-size: 17px; margin-bottom: 8px; }
+        .feature-card p { font-size: 14px; color: #888899; }
+        .privacy {
+            background: #14141F;
+            border: 1px solid #1A1A26;
+            border-radius: 16px;
+            padding: 40px;
+            text-align: center;
+        }
+        .privacy p { color: #888899; margin-bottom: 20px; }
+        footer {
+            border-top: 1px solid #1A1A26;
+            padding: 30px 0;
+            text-align: center;
+            color: #888899;
+            font-size: 13px;
+        }
+        footer a { color: #4ADE80; text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+        @media (max-width: 600px) {
+            h1 { font-size: 28px; }
+            section { padding: 50px 0; }
+            .feature-card { padding: 20px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <img src="assets/images/logo.png" alt="Veil" class="logo-img">
+            <h1>Veil</h1>
+            <p class="tagline">Говори свободно.</p>
+            <a href="#" class="btn btn-primary">Скачать Windows</a>
+            <a href="#" class="btn btn-outline">Скоро на Android</a>
+        </header>
+
+        <section>
+            <h2>Почему <span>Veil</span></h2>
+            <div class="features">
+                <div class="feature-card">
+                    <div class="feature-icon">🔐</div>
+                    <h3>Zero Knowledge</h3>
+                    <p>Мы не знаем о вас ничего. Ни номера, ни почты, ни имени. Только ключи.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">⚡</div>
+                    <h3>XChaCha20-Poly1305</h3>
+                    <p>Военное шифрование каждого сообщения. Даже разработчик не может прочитать вашу переписку.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">👥</div>
+                    <h3>Группы</h3>
+                    <p>Защищённые групповые чаты с отдельными ключами шифрования.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🎯</div>
+                    <h3>Кодовые слова</h3>
+                    <p>Проверьте безопасность канала при личной встрече. Никаких MITM-атак.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📱</div>
+                    <h3>Windows + Web</h3>
+                    <p>Работает на компьютере и в браузере. Скоро на Android и iOS.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🌙</div>
+                    <h3>Тёмная тема</h3>
+                    <p>Стильный Obsidian UI. Никакой фиолетовой сладости.</p>
+                </div>
+            </div>
+        </section>
+
+        <section>
+            <div class="privacy">
+                <h2>🔒 Полная конфиденциальность</h2>
+                <p>Никаких серверов. Никаких логов. Никаких метаданных. <br>Всё хранится только на вашем устройстве.</p>
+                <a href="#" class="btn btn-outline">Политика конфиденциальности</a>
+            </div>
+        </section>
+
+        <footer>
+            <p>Создано <strong>void</strong> (0xTima)</p>
+            <p style="margin-top: 8px;">Veil Messenger © 2026 — Zero Knowledge. Zero Trust.</p>
+        </footer>
+    </div>
+</body>
+</html>
