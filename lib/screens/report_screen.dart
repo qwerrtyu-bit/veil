@@ -36,8 +36,15 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
     setState(() => _isSending = true);
 
     final reportsBox = Hive.box('settings');
-    final reports = reportsBox.get('reports', defaultValue: <Map<String, dynamic>>[]);
-    final reportsList = List<Map<String, dynamic>>.from(reports);
+    final raw = reportsBox.get('reports');
+    List<Map<String, dynamic>> reportsList = [];
+    if (raw is List) {
+      for (final item in raw) {
+        if (item is Map) {
+          reportsList.add(Map<String, dynamic>.from(item));
+        }
+      }
+    }
 
     reportsList.add({
       'contactId': widget.contactId,
@@ -52,18 +59,13 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
 
     if (!mounted) return;
 
-    setState(() => _isSending = false);
-
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Жалоба отправлена. Спасибо за бдительность.'),
         backgroundColor: Colors.green,
-        duration: Duration(seconds: 2),
       ),
     );
 
-    await Future.delayed(const Duration(milliseconds: 500));
-    if (!mounted) return;
     context.go('/chats');
   }
 
@@ -72,10 +74,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Пожаловаться'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go('/chats'),
-        ),
+        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.pop()),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -98,16 +97,11 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Жалоба на: ${widget.contactName}',
-                            style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
-                          ),
+                          Text('Жалоба на: ${widget.contactName}',
+                              style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600)),
                           const SizedBox(height: 4),
-                          Text(
-                            'Ваша личность в безопасности. Содержимое чата не будет раскрыто.',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                  color: Colors.grey[600], fontSize: 12),
-                          ),
+                          Text('Ваша личность в безопасности. Содержимое чата не будет раскрыто.',
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600], fontSize: 12)),
                         ],
                       ),
                     ),
@@ -115,8 +109,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                 ),
               ),
               const SizedBox(height: 32),
-              Text('Причина жалобы',
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600)),
+              Text('Причина жалобы', style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600)),
               const SizedBox(height: 16),
               ..._reasons.entries.map((entry) {
                 final isSelected = _selectedReason == entry.key;
@@ -144,7 +137,12 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                           Icon(isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
                               color: isSelected ? const Color(0xFF6C5CE7) : Colors.grey[400]),
                           const SizedBox(width: 12),
-                          Expanded(child: Text(entry.value)),
+                          Expanded(
+                            child: Text(entry.value,
+                                style: TextStyle(
+                                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                                    color: isSelected ? const Color(0xFF6C5CE7) : null)),
+                          ),
                         ],
                       ),
                     ),
@@ -152,15 +150,36 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                 );
               }),
               const SizedBox(height: 24),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF6C5CE7).withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.shield, color: Color(0xFF6C5CE7), size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Разработчик увидит только публичный ключ и причину жалобы. Сообщения останутся зашифрованными.',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF6C5CE7), fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 32),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: _isSending ? null : _sendReport,
                   style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red, padding: const EdgeInsets.symmetric(vertical: 16)),
+                    backgroundColor: Colors.red,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
                   child: _isSending
-                      ? const SizedBox(width: 20, height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                       : const Text('Отправить жалобу'),
                 ),
               ),

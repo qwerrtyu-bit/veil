@@ -6,15 +6,14 @@ import 'app.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Hive.initFlutter();
-  await Hive.openBox('contacts');
-  await Hive.openBox('messages');
-  await Hive.openBox('settings');
-  await Hive.openBox('secure');
+  try {
+    await Hive.initFlutter();
+  } catch (_) {}
 
-  runApp(
-    const ProviderScope(
-      child: VeilApp(),
-    ),
-  );
+  try { await Hive.openBox('contacts'); } catch (_) {}
+  try { await Hive.openBox('messages'); } catch (_) {}
+  try { await Hive.openBox('settings'); } catch (_) {}
+  try { await Hive.openBox('secure'); } catch (_) {}
+
+  runApp(const ProviderScope(child: VeilApp()));
 }

@@ -3,12 +3,9 @@ import 'dart:convert';
 import 'dart:io';
 
 void main() async {
-  final context = SecurityContext()
-    ..useCertificateChain('certs/cert.pem')
-    ..usePrivateKey('certs/key.pem');
-
-  final server = await HttpServer.bindSecure(InternetAddress.anyIPv4, 8443, context);
-  print('🟢 Veil P2P Server (HTTPS) запущен на https://localhost:8443');
+  final port = int.tryParse(Platform.environment['PORT'] ?? '8080') ?? 8080;
+  final server = await HttpServer.bind(InternetAddress.anyIPv4, port);
+  print('🟢 Veil Server запущен на порту $port');
 
   final Map<String, List<DateTime>> _requestLog = {};
   final Map<String, List<Map<String, dynamic>>> _pendingMessages = {};
@@ -67,9 +64,9 @@ void main() async {
     } else if (path == '/plugins') {
       request.response.write(jsonEncode({
         'plugins': [
-          {'id': '1', 'name': 'Тёмная тема Pro', 'author': 'void', 'type': 'theme', 'price': 'Бесплатно', 'description': 'Расширенная тёмная тема с настройками цветов', 'downloads': 156, 'version': '1.0.0'},
-          {'id': '2', 'name': 'Антиспам фильтр', 'author': '0xTima', 'type': 'filter', 'price': '299 ₽', 'description': 'Автоматическое удаление спам-сообщений', 'downloads': 89, 'version': '2.1.0'},
-          {'id': '3', 'name': 'Экспорт в PDF', 'author': 'user123', 'type': 'export', 'price': 'Бесплатно', 'description': 'Выгрузка чатов в PDF формат', 'downloads': 34, 'version': '1.0.0'},
+          {'id': '1', 'name': 'Тёмная тема Pro', 'author': 'void', 'type': 'theme', 'price': 'Бесплатно', 'description': 'Расширенная тёмная тема', 'downloads': 156, 'version': '1.0.0'},
+          {'id': '2', 'name': 'Антиспам фильтр', 'author': '0xTima', 'type': 'filter', 'price': '299 ₽', 'description': 'Автоматическое удаление спама', 'downloads': 89, 'version': '2.1.0'},
+          {'id': '3', 'name': 'Экспорт в PDF', 'author': 'user123', 'type': 'export', 'price': 'Бесплатно', 'description': 'Выгрузка чатов в PDF', 'downloads': 34, 'version': '1.0.0'},
         ]
       }));
     } else if (path == '/register') {
@@ -107,18 +104,12 @@ void main() async {
       if (_blockedKeys.contains(userId)) {
         request.response.write(jsonEncode({'messages': <Map<String, dynamic>>[], 'blocked': true}));
       } else {
-        if (syncAll) {
-          final allMessages = _pendingMessages[userId] ?? [];
-          _pendingMessages[userId] = [];
-          request.response.write(jsonEncode({'messages': allMessages, 'synced': true}));
-        } else {
-          final messages = _pendingMessages[userId] ?? [];
-          _pendingMessages[userId] = [];
-          request.response.write(jsonEncode({'messages': messages}));
-        }
+        final messages = syncAll ? (_pendingMessages[userId] ?? []) : (_pendingMessages[userId] ?? []);
+        _pendingMessages[userId] = [];
+        request.response.write(jsonEncode({'messages': messages}));
       }
     } else {
-      request.response.write('Veil P2P Server (Secure) OK');
+      request.response.write('Veil Server OK');
     }
     request.response.close();
   }

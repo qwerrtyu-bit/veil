@@ -3,8 +3,10 @@ import 'dart:math';
 import 'dart:typed_data';
 import 'package:bip39_mnemonic/bip39_mnemonic.dart' as bip39;
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:argon2_ffi/argon2_ffi.dart';
+import 'package:ed25519_edwards/ed25519_edwards.dart' as ed25519;
 
-class IdentityService {
+class IdentityServiceDesktop {
   Box get _secureStorage => Hive.box('secure');
 
   List<String> generateSeedPhrase() {
@@ -24,24 +26,33 @@ class IdentityService {
   }
 
   String hashPassword(String password) {
-    final salt = _randomString(16);
-    var hash = _simpleHash('$salt$password');
-    for (int i = 0; i < 10000; i++) {
-      hash = _simpleHash('$hash$salt$password');
-    }
-    return '$salt:$hash';
+    final salt = Salt.newSalt();
+    final argon2 = Argon2id(
+      salt: salt,
+      parallelism: 2,
+      memory: 65536,
+      iterations: 3,
+      length: 32,
+    );
+    final hash = argon2.convert(utf8.encode(password));
+    return '${base64.encode(salt.bytes)}:${base64.encode(hash.bytes)}';
   }
 
   bool verifyPassword(String password, String storedHash) {
     try {
       final parts = storedHash.split(':');
       if (parts.length != 2) return false;
-      final salt = parts[0];
-      var hash = _simpleHash('$salt$password');
-      for (int i = 0; i < 10000; i++) {
-        hash = _simpleHash('$hash$salt$password');
-      }
-      return hash == parts[1];
+      final salt = Salt(base64.decode(parts[0]));
+      final expectedHash = base64.decode(parts[1]);
+      final argon2 = Argon2id(
+        salt: salt,
+        parallelism: 2,
+        memory: 65536,
+        iterations: 3,
+        length: 32,
+      );
+      final hash = argon2.convert(utf8.encode(password));
+      return base64.encode(hash.bytes) == base64.encode(expectedHash);
     } catch (e) {
       return false;
     }
@@ -66,6 +77,7 @@ class IdentityService {
     return verifyPassword(password, storedHash);
   }
 
+  // Остальные методы как в IdentityService
   String generateTotpSecret() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
     final random = Random.secure();
@@ -94,7 +106,8 @@ class IdentityService {
   Map<String, String> generateKeyPair(List<String> seedWords) {
     final phrase = seedWords.join(' ');
     final seed = _deriveSeed(phrase);
-    return _generateEd25519KeyPair(seed);
+    final keyPair = _generateEd25519KeyPair(seed);
+    return {'publicKey': keyPair['publicKey']!, 'privateKey': keyPair['privateKey']!};
   }
 
   Future<void> saveKeyPair(String publicKey, String privateKey) async {
@@ -102,13 +115,8 @@ class IdentityService {
     await _secureStorage.put('private_key', privateKey);
   }
 
-  Future<String?> getPublicKey() async {
-    return _secureStorage.get('public_key');
-  }
-
-  Future<String?> getPrivateKey() async {
-    return _secureStorage.get('private_key');
-  }
+  Future<String?> getPublicKey() async => _secureStorage.get('public_key');
+  Future<String?> getPrivateKey() async => _secureStorage.get('private_key');
 
   String _generateTotpCode(String secret, int counter) {
     final key = _base32Decode(secret);
@@ -118,29 +126,8 @@ class IdentityService {
     }
     final hmac = _hmacSha1(Uint8List.fromList(key), counterBytes);
     final offset = hmac[19] & 0x0F;
-    final binary = ((hmac[offset] & 0x7F) << 24) |
-        ((hmac[offset + 1] & 0xFF) << 16) |
-        ((hmac[offset + 2] & 0xFF) << 8) |
-        (hmac[offset + 3] & 0xFF);
+    final binary = ((hmac[offset] & 0x7F) << 24) | ((hmac[offset + 1] & 0xFF) << 16) | ((hmac[offset + 2] & 0xFF) << 8) | (hmac[offset + 3] & 0xFF);
     return (binary % 1000000).toString().padLeft(6, '0');
-  }
-
-  String _simpleHash(String input) {
-    final bytes = utf8.encode(input);
-    int h1 = 0x67452301, h2 = 0xEFCDAB89, h3 = 0x98BADCFE, h4 = 0x10325476;
-    for (int i = 0; i < bytes.length; i++) {
-      h1 = ((h1 << 5) - h1 + bytes[i]) & 0xFFFFFFFF;
-      h2 = ((h2 << 7) - h2 + bytes[i] + i) & 0xFFFFFFFF;
-      h3 = ((h3 << 3) + h3 + bytes[i] * 31) & 0xFFFFFFFF;
-      h4 = ((h4 << 11) - h4 + bytes[i] * 17) & 0xFFFFFFFF;
-    }
-    return h1.toRadixString(16) + h2.toRadixString(16) + h3.toRadixString(16) + h4.toRadixString(16);
-  }
-
-  String _randomString(int length) {
-    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    final random = Random.secure();
-    return List.generate(length, (_) => chars[random.nextInt(chars.length)]).join();
   }
 
   List<int> _base32Decode(String base32) {
@@ -154,28 +141,17 @@ class IdentityService {
       if (value == -1) continue;
       buffer = (buffer << 5) | value;
       bitsLeft += 5;
-      if (bitsLeft >= 8) {
-        bitsLeft -= 8;
-        result.add((buffer >> bitsLeft) & 0xFF);
-      }
+      if (bitsLeft >= 8) { bitsLeft -= 8; result.add((buffer >> bitsLeft) & 0xFF); }
     }
     return result;
   }
 
   Uint8List _hmacSha1(Uint8List key, Uint8List message) {
     const blockSize = 64;
-    if (key.length > blockSize) {
-      key = Uint8List.fromList(_sha1(key));
-    }
-    if (key.length < blockSize) {
-      key = Uint8List.fromList([...key, ...List.filled(blockSize - key.length, 0)]);
-    }
-    final oKeyPad = Uint8List(blockSize);
-    final iKeyPad = Uint8List(blockSize);
-    for (int i = 0; i < blockSize; i++) {
-      oKeyPad[i] = key[i] ^ 0x5C;
-      iKeyPad[i] = key[i] ^ 0x36;
-    }
+    if (key.length > blockSize) key = Uint8List.fromList(_sha1(key));
+    if (key.length < blockSize) key = Uint8List.fromList([...key, ...List.filled(blockSize - key.length, 0)]);
+    final oKeyPad = Uint8List(blockSize), iKeyPad = Uint8List(blockSize);
+    for (int i = 0; i < blockSize; i++) { oKeyPad[i] = key[i] ^ 0x5C; iKeyPad[i] = key[i] ^ 0x36; }
     return Uint8List.fromList(_sha1(Uint8List.fromList([...oKeyPad, ..._sha1(Uint8List.fromList([...iKeyPad, ...message]))])));
   }
 
@@ -184,12 +160,8 @@ class IdentityService {
     final padded = _padSha1(data);
     for (int chunk = 0; chunk < padded.length; chunk += 64) {
       final w = List.filled(80, 0);
-      for (int i = 0; i < 16; i++) {
-        w[i] = (padded[chunk + i * 4] << 24) | (padded[chunk + i * 4 + 1] << 16) | (padded[chunk + i * 4 + 2] << 8) | padded[chunk + i * 4 + 3];
-      }
-      for (int i = 16; i < 80; i++) {
-        w[i] = _rotl(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
-      }
+      for (int i = 0; i < 16; i++) w[i] = (padded[chunk + i * 4] << 24) | (padded[chunk + i * 4 + 1] << 16) | (padded[chunk + i * 4 + 2] << 8) | padded[chunk + i * 4 + 3];
+      for (int i = 16; i < 80; i++) w[i] = _rotl(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
       int a = h0, b = h1, c = h2, d = h3, e = h4;
       for (int i = 0; i < 80; i++) {
         int f, k;
@@ -200,102 +172,66 @@ class IdentityService {
         final temp = (_rotl(a, 5) + f + e + k + w[i]) & 0xFFFFFFFF;
         e = d; d = c; c = _rotl(b, 30); b = a; a = temp;
       }
-      h0 = (h0 + a) & 0xFFFFFFFF; h1 = (h1 + b) & 0xFFFFFFFF;
-      h2 = (h2 + c) & 0xFFFFFFFF; h3 = (h3 + d) & 0xFFFFFFFF; h4 = (h4 + e) & 0xFFFFFFFF;
+      h0 = (h0 + a) & 0xFFFFFFFF; h1 = (h1 + b) & 0xFFFFFFFF; h2 = (h2 + c) & 0xFFFFFFFF; h3 = (h3 + d) & 0xFFFFFFFF; h4 = (h4 + e) & 0xFFFFFFFF;
     }
     final result = <int>[];
-    for (final h in [h0, h1, h2, h3, h4]) {
-      result.addAll([(h >> 24) & 0xFF, (h >> 16) & 0xFF, (h >> 8) & 0xFF, h & 0xFF]);
-    }
+    for (final h in [h0, h1, h2, h3, h4]) result.addAll([(h >> 24) & 0xFF, (h >> 16) & 0xFF, (h >> 8) & 0xFF, h & 0xFF]);
     return result;
   }
 
   Uint8List _padSha1(Uint8List data) {
     final ml = data.length * 8;
     final result = <int>[...data, 0x80];
-    while ((result.length * 8) % 512 != 448) { result.add(0); }
-    for (int i = 7; i >= 0; i--) { result.add((ml >> (i * 8)) & 0xFF); }
+    while ((result.length * 8) % 512 != 448) result.add(0);
+    for (int i = 7; i >= 0; i--) result.add((ml >> (i * 8)) & 0xFF);
     return Uint8List.fromList(result);
   }
 
-  int _rotl(int value, int shift) {
-    return ((value << shift) | (value >> (32 - shift))) & 0xFFFFFFFF;
-  }
+  int _rotl(int v, int s) => ((v << s) | (v >> (32 - s))) & 0xFFFFFFFF;
 
-  Uint8List _deriveSeed(String phrase) {
-    return Uint8List.fromList(_sha256(utf8.encode(phrase)));
-  }
+  Uint8List _deriveSeed(String phrase) => Uint8List.fromList(_sha256(utf8.encode(phrase)));
 
   Uint8List _sha256(Uint8List data) {
-    int h0 = 0x6A09E667, h1 = 0xBB67AE85, h2 = 0x3C6EF372, h3 = 0xA54FF53A;
-    int h4 = 0x510E527F, h5 = 0x9B05688C, h6 = 0x1F83D9AB, h7 = 0x5BE0CD19;
+    int h0 = 0x6A09E667, h1 = 0xBB67AE85, h2 = 0x3C6EF372, h3 = 0xA54FF53A, h4 = 0x510E527F, h5 = 0x9B05688C, h6 = 0x1F83D9AB, h7 = 0x5BE0CD19;
     final padded = _padSha256(data);
     for (int chunk = 0; chunk < padded.length; chunk += 64) {
       final w = List.filled(64, 0);
-      for (int i = 0; i < 16; i++) {
-        w[i] = (padded[chunk + i * 4] << 24) | (padded[chunk + i * 4 + 1] << 16) | (padded[chunk + i * 4 + 2] << 8) | padded[chunk + i * 4 + 3];
-      }
-      for (int i = 16; i < 64; i++) {
-        final s0 = _rotr(w[i - 15], 7) ^ _rotr(w[i - 15], 18) ^ (w[i - 15] >> 3);
-        final s1 = _rotr(w[i - 2], 17) ^ _rotr(w[i - 2], 19) ^ (w[i - 2] >> 10);
-        w[i] = (w[i - 16] + s0 + w[i - 7] + s1) & 0xFFFFFFFF;
-      }
+      for (int i = 0; i < 16; i++) w[i] = (padded[chunk + i * 4] << 24) | (padded[chunk + i * 4 + 1] << 16) | (padded[chunk + i * 4 + 2] << 8) | padded[chunk + i * 4 + 3];
+      for (int i = 16; i < 64; i++) { final s0 = _rotr(w[i - 15], 7) ^ _rotr(w[i - 15], 18) ^ (w[i - 15] >> 3); final s1 = _rotr(w[i - 2], 17) ^ _rotr(w[i - 2], 19) ^ (w[i - 2] >> 10); w[i] = (w[i - 16] + s0 + w[i - 7] + s1) & 0xFFFFFFFF; }
       int a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, h = h7;
       for (int i = 0; i < 64; i++) {
-        final s1 = _rotr(e, 6) ^ _rotr(e, 11) ^ _rotr(e, 25);
-        final ch = (e & f) ^ ((~e) & g);
-        final temp1 = (h + s1 + ch + _sha256K[i] + w[i]) & 0xFFFFFFFF;
-        final s0 = _rotr(a, 2) ^ _rotr(a, 13) ^ _rotr(a, 22);
-        final maj = (a & b) ^ (a & c) ^ (b & c);
-        final temp2 = (s0 + maj) & 0xFFFFFFFF;
-        h = g; g = f; f = e; e = (d + temp1) & 0xFFFFFFFF;
-        d = c; c = b; b = a; a = (temp1 + temp2) & 0xFFFFFFFF;
+        final s1 = _rotr(e, 6) ^ _rotr(e, 11) ^ _rotr(e, 25), ch = (e & f) ^ ((~e) & g), temp1 = (h + s1 + ch + _sha256K[i] + w[i]) & 0xFFFFFFFF;
+        final s0 = _rotr(a, 2) ^ _rotr(a, 13) ^ _rotr(a, 22), maj = (a & b) ^ (a & c) ^ (b & c), temp2 = (s0 + maj) & 0xFFFFFFFF;
+        h = g; g = f; f = e; e = (d + temp1) & 0xFFFFFFFF; d = c; c = b; b = a; a = (temp1 + temp2) & 0xFFFFFFFF;
       }
-      h0 = (h0 + a) & 0xFFFFFFFF; h1 = (h1 + b) & 0xFFFFFFFF;
-      h2 = (h2 + c) & 0xFFFFFFFF; h3 = (h3 + d) & 0xFFFFFFFF;
-      h4 = (h4 + e) & 0xFFFFFFFF; h5 = (h5 + f) & 0xFFFFFFFF;
-      h6 = (h6 + g) & 0xFFFFFFFF; h7 = (h7 + h) & 0xFFFFFFFF;
+      h0 = (h0 + a) & 0xFFFFFFFF; h1 = (h1 + b) & 0xFFFFFFFF; h2 = (h2 + c) & 0xFFFFFFFF; h3 = (h3 + d) & 0xFFFFFFFF;
+      h4 = (h4 + e) & 0xFFFFFFFF; h5 = (h5 + f) & 0xFFFFFFFF; h6 = (h6 + g) & 0xFFFFFFFF; h7 = (h7 + h) & 0xFFFFFFFF;
     }
     final result = <int>[];
-    for (final val in [h0, h1, h2, h3, h4, h5, h6, h7]) {
-      result.addAll([(val >> 24) & 0xFF, (val >> 16) & 0xFF, (val >> 8) & 0xFF, val & 0xFF]);
-    }
+    for (final v in [h0, h1, h2, h3, h4, h5, h6, h7]) result.addAll([(v >> 24) & 0xFF, (v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF]);
     return Uint8List.fromList(result);
   }
 
   Uint8List _padSha256(Uint8List data) {
     final ml = data.length * 8;
     final result = <int>[...data, 0x80];
-    while ((result.length * 8) % 512 != 448) { result.add(0); }
-    for (int i = 7; i >= 0; i--) { result.add((ml >> (i * 8)) & 0xFF); }
+    while ((result.length * 8) % 512 != 448) result.add(0);
+    for (int i = 7; i >= 0; i--) result.add((ml >> (i * 8)) & 0xFF);
     return Uint8List.fromList(result);
   }
 
-  int _rotr(int value, int shift) {
-    return ((value >> shift) | (value << (32 - shift))) & 0xFFFFFFFF;
-  }
+  int _rotr(int v, int s) => ((v >> s) | (v << (32 - s))) & 0xFFFFFFFF;
 
-  Map<String, String> _generateEd25519KeyPair(Uint8List seed) {
-    final privateKey = _sha512(seed).sublist(0, 32);
-    final clamped = Uint8List.fromList(privateKey);
-    clamped[0] &= 248;
-    clamped[31] &= 127;
-    clamped[31] |= 64;
-    final publicKey = _sha256(Uint8List.fromList(clamped));
+    Map<String, String> _generateEd25519KeyPair(Uint8List seed) {
+    final keyPair = ed25519.generateKeyPair(seed: seed);
     return {
-      'publicKey': _bytesToHex(publicKey),
-      'privateKey': _bytesToHex(clamped),
+      'publicKey': _bytesToHex(keyPair.publicKey),
+      'privateKey': _bytesToHex(keyPair.privateKey),
     };
   }
 
-  Uint8List _sha512(Uint8List data) {
-    final first = _sha256(data);
-    return _sha256(Uint8List.fromList([...first, ...data]));
-  }
-
-  String _bytesToHex(Uint8List bytes) {
-    return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join('');
-  }
+  Uint8List _sha512(Uint8List data) => _sha256(Uint8List.fromList([..._sha256(data), ...data]));
+  String _bytesToHex(Uint8List b) => b.map((x) => x.toRadixString(16).padLeft(2, '0')).join('');
 
   static const _sha256K = [
     0x428A2F98, 0x71374491, 0xB5C0FBCF, 0xE9B5DBA5, 0x3956C25B, 0x59F111F1, 0x923F82A4, 0xAB1C5ED5,

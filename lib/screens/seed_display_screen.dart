@@ -237,10 +237,13 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
                           setState(() => _hasCopied = true);
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              content: Text('Seed-фраза скопирована'),
+                              content: Text('Seed-фраза скопирована. Буфер будет очищен через 30 сек.'),
                               backgroundColor: Color(0xFF6C5CE7),
                             ),
                           );
+                          Future.delayed(const Duration(seconds: 30), () {
+                            Clipboard.setData(const ClipboardData(text: ''));
+                          });
                         },
                         child: Text(_hasCopied ? 'Скопировано' : 'Скопировать в буфер'),
                       ),

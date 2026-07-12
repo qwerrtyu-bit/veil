@@ -3,169 +3,262 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Veil Messenger — Говори свободно.</title>
+    <title>Veil Messenger — Говори свободно</title>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;600;700&display=swap');
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             background: #0A0A0F;
             color: #E0E0E0;
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-family: 'Inter', -apple-system, sans-serif;
             line-height: 1.6;
+            overflow-x: hidden;
         }
-        .container { max-width: 900px; margin: 0 auto; padding: 0 24px; }
-        header {
-            padding: 80px 0 60px;
-            text-align: center;
-            border-bottom: 1px solid #1A1A26;
+        .grid-bg {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-image: 
+                linear-gradient(rgba(74, 222, 128, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(74, 222, 128, 0.03) 1px, transparent 1px);
+            background-size: 60px 60px;
+            pointer-events: none;
+            z-index: 0;
         }
-        .logo-img {
-            width: 100px; height: 100px;
-            border-radius: 20px;
-            margin: 0 auto 30px;
-            display: block;
-            object-fit: cover;
+        .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+        
+        nav {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 24px 0; border-bottom: 1px solid #1A1A26;
         }
-        h1 {
+        .logo { font-family: 'Space Mono', monospace; font-size: 24px; font-weight: 700; color: #4ADE80; }
+        .logo span { color: #E0E0E0; }
+        .nav-links { display: flex; gap: 32px; list-style: none; }
+        .nav-links a { color: #888899; text-decoration: none; font-size: 14px; transition: color 0.2s; }
+        .nav-links a:hover { color: #4ADE80; }
+        
+        .hero {
+            text-align: center; padding: 120px 0 80px;
+        }
+        .hero h1 {
             font-family: 'Space Mono', monospace;
-            font-size: 42px;
-            font-weight: bold;
-            margin-bottom: 12px;
-            color: #4ADE80;
+            font-size: clamp(36px, 6vw, 72px);
+            font-weight: 700;
+            line-height: 1.1;
+            margin-bottom: 24px;
         }
-        .tagline {
-            font-size: 18px;
-            color: #888899;
-            margin-bottom: 30px;
+        .hero h1 .green { color: #4ADE80; }
+        .hero p {
+            font-size: 18px; color: #888899; max-width: 600px;
+            margin: 0 auto 40px;
         }
         .btn {
-            display: inline-block;
-            padding: 14px 32px;
-            border-radius: 12px;
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 16px 32px; border-radius: 12px;
             font-family: 'Space Mono', monospace;
-            font-weight: 600;
-            font-size: 15px;
+            font-weight: 700; font-size: 15px;
             text-decoration: none;
-            margin: 6px;
-            transition: all 0.2s;
+            transition: all 0.3s;
+            cursor: pointer;
+            border: none;
         }
-        .btn-primary {
-            background: #4ADE80;
-            color: #0A0A0F;
-        }
-        .btn-primary:hover { background: #22C55E; }
-        .btn-outline {
-            border: 2px solid #2A2A3A;
-            color: #E0E0E0;
-        }
+        .btn-primary { background: #4ADE80; color: #0A0A0F; }
+        .btn-primary:hover { background: #22C55E; transform: translateY(-2px); box-shadow: 0 10px 30px rgba(74, 222, 128, 0.3); }
+        .btn-outline { border: 2px solid #2A2A3A; color: #E0E0E0; }
         .btn-outline:hover { border-color: #4ADE80; color: #4ADE80; }
-        section { padding: 80px 0; }
+        .btn-group { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+        
+        .status {
+            display: inline-flex; align-items: center; gap: 8px;
+            background: #1A1A26; padding: 10px 20px; border-radius: 20px;
+            font-size: 13px; color: #888899; margin-bottom: 32px;
+        }
+        .status-dot { width: 8px; height: 8px; background: #4ADE80; border-radius: 50%; animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        
+        section { padding: 100px 0; }
         h2 {
             font-family: 'Space Mono', monospace;
-            font-size: 28px;
-            margin-bottom: 40px;
-            text-align: center;
+            font-size: 32px; text-align: center; margin-bottom: 60px;
         }
-        h2 span { color: #4ADE80; }
+        h2 .green { color: #4ADE80; }
+        
         .features {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 24px;
         }
         .feature-card {
             background: #14141F;
             border: 1px solid #1A1A26;
-            border-radius: 16px;
-            padding: 30px;
-            text-align: center;
+            border-radius: 20px;
+            padding: 36px 28px;
             transition: all 0.3s;
         }
-        .feature-card:hover {
-            border-color: #4ADE80;
-            transform: translateY(-4px);
+        .feature-card:hover { border-color: #4ADE80; transform: translateY(-4px); box-shadow: 0 20px 40px rgba(0,0,0,0.3); }
+        .feature-icon { font-size: 36px; margin-bottom: 20px; }
+        .feature-card h3 { font-size: 18px; margin-bottom: 12px; font-weight: 600; }
+        .feature-card p { font-size: 14px; color: #888899; line-height: 1.7; }
+        
+        .security-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
         }
-        .feature-icon { font-size: 36px; margin-bottom: 16px; }
-        .feature-card h3 { font-size: 17px; margin-bottom: 8px; }
-        .feature-card p { font-size: 14px; color: #888899; }
-        .privacy {
-            background: #14141F;
-            border: 1px solid #1A1A26;
-            border-radius: 16px;
-            padding: 40px;
+        .security-item {
             text-align: center;
+            padding: 24px;
+            background: #14141F;
+            border-radius: 16px;
+            border: 1px solid #1A1A26;
         }
-        .privacy p { color: #888899; margin-bottom: 20px; }
+        .security-item .icon { font-size: 28px; margin-bottom: 12px; }
+        .security-item .title { font-family: 'Space Mono', monospace; font-size: 13px; color: #4ADE80; margin-bottom: 4px; }
+        .security-item .value { font-size: 14px; color: #888899; }
+        
+        .cta {
+            text-align: center;
+            background: linear-gradient(135deg, #1A1A26, #14141F);
+            border: 1px solid #2A2A3A;
+            border-radius: 24px;
+            padding: 60px 40px;
+        }
+        .cta h2 { margin-bottom: 16px; }
+        .cta p { color: #888899; margin-bottom: 32px; font-size: 16px; }
+        
         footer {
             border-top: 1px solid #1A1A26;
-            padding: 30px 0;
+            padding: 40px 0;
             text-align: center;
             color: #888899;
             font-size: 13px;
         }
         footer a { color: #4ADE80; text-decoration: none; }
-        footer a:hover { text-decoration: underline; }
-        @media (max-width: 600px) {
-            h1 { font-size: 28px; }
-            section { padding: 50px 0; }
-            .feature-card { padding: 20px; }
+        
+        @media (max-width: 768px) {
+            .hero { padding: 60px 0 40px; }
+            section { padding: 60px 0; }
+            .nav-links { display: none; }
         }
     </style>
 </head>
 <body>
+    <div class="grid-bg"></div>
     <div class="container">
-        <header>
-            <img src="assets/images/logo.png" alt="Veil" class="logo-img">
-            <h1>Veil</h1>
-            <p class="tagline">Говори свободно.</p>
-            <a href="#" class="btn btn-primary">Скачать Windows</a>
-            <a href="#" class="btn btn-outline">Скоро на Android</a>
-        </header>
+        <nav>
+            <div class="logo">Veil<span>.im</span></div>
+            <ul class="nav-links">
+                <li><a href="#features">Возможности</a></li>
+                <li><a href="#security">Безопасность</a></li>
+                <li><a href="https://github.com/qwerrtyu-bit/veil">GitHub</a></li>
+            </ul>
+        </nav>
 
-        <section>
-            <h2>Почему <span>Veil</span></h2>
+        <div class="hero">
+            <div class="status">
+                <span class="status-dot"></span>
+                v1.3.0 — Активная разработка
+            </div>
+            <h1>Мессенджер,<br>которому <span class="green">не нужны</span><br>ваши данные</h1>
+            <p>Veil — P2P-мессенджер с абсолютной приватностью. Ни номера, ни почты, ни серверов. Только математика.</p>
+            <div class="btn-group">
+                <a href="https://github.com/qwerrtyu-bit/veil/releases" class="btn btn-primary">
+                    ⬇ Скачать Windows
+                </a>
+                <a href="#features" class="btn btn-outline">
+                    Узнать больше
+                </a>
+            </div>
+        </div>
+
+        <section id="features">
+            <h2>Почему <span class="green">Veil</span></h2>
             <div class="features">
                 <div class="feature-card">
                     <div class="feature-icon">🔐</div>
                     <h3>Zero Knowledge</h3>
-                    <p>Мы не знаем о вас ничего. Ни номера, ни почты, ни имени. Только ключи.</p>
+                    <p>Мы не знаем кто вы. Ни номера, ни почты, ни имени. Только криптографические ключи.</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon">⚡</div>
-                    <h3>XChaCha20-Poly1305</h3>
-                    <p>Военное шифрование каждого сообщения. Даже разработчик не может прочитать вашу переписку.</p>
+                    <h3>XChaCha20 + Forward Secrecy</h3>
+                    <p>Новый ключ для каждого сообщения. Даже если один взломают — история останется защищённой.</p>
                 </div>
                 <div class="feature-card">
-                    <div class="feature-icon">👥</div>
-                    <h3>Группы</h3>
-                    <p>Защищённые групповые чаты с отдельными ключами шифрования.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon">🎯</div>
-                    <h3>Кодовые слова</h3>
-                    <p>Проверьте безопасность канала при личной встрече. Никаких MITM-атак.</p>
+                    <div class="feature-icon">🧅</div>
+                    <h3>Onion-маршрутизация</h3>
+                    <p>Сообщения идут через цепочку узлов. Никто не знает, кто кому пишет.</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon">📱</div>
-                    <h3>Windows + Web</h3>
-                    <p>Работает на компьютере и в браузере. Скоро на Android и iOS.</p>
+                    <h3>Всё в одном</h3>
+                    <p>Чаты, файлы, фото, видео, голосовые, статусы, группы. Всё зашифровано.</p>
                 </div>
                 <div class="feature-card">
-                    <div class="feature-icon">🌙</div>
-                    <h3>Тёмная тема</h3>
-                    <p>Стильный Obsidian UI. Никакой фиолетовой сладости.</p>
+                    <div class="feature-icon">🌐</div>
+                    <h3>P2P без серверов</h3>
+                    <p>DHT-сеть как в торрентах. Нет единой точки отказа. Нет серверов для обыска.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🛡️</div>
+                    <h3>Открытый код</h3>
+                    <p>Всё на GitHub под лицензией MIT. Любой может проверить — бэкдоров нет.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="security">
+            <h2>Технические <span class="green">спецификации</span></h2>
+            <div class="security-grid">
+                <div class="security-item">
+                    <div class="icon">🔑</div>
+                    <div class="title">Ключи</div>
+                    <div class="value">Ed25519</div>
+                </div>
+                <div class="security-item">
+                    <div class="icon">🔒</div>
+                    <div class="title">Шифрование</div>
+                    <div class="value">ChaCha20</div>
+                </div>
+                <div class="security-item">
+                    <div class="icon">🔄</div>
+                    <div class="title">Обмен ключами</div>
+                    <div class="value">ECDH + FS</div>
+                </div>
+                <div class="security-item">
+                    <div class="icon">📝</div>
+                    <div class="title">Seed</div>
+                    <div class="value">BIP39 (24 слова)</div>
+                </div>
+                <div class="security-item">
+                    <div class="icon">📡</div>
+                    <div class="title">Сеть</div>
+                    <div class="value">DHT + Onion</div>
+                </div>
+                <div class="security-item">
+                    <div class="icon">🔐</div>
+                    <div class="title">2FA</div>
+                    <div class="value">TOTP (RFC 6238)</div>
                 </div>
             </div>
         </section>
 
         <section>
-            <div class="privacy">
-                <h2>🔒 Полная конфиденциальность</h2>
-                <p>Никаких серверов. Никаких логов. Никаких метаданных. <br>Всё хранится только на вашем устройстве.</p>
-                <a href="#" class="btn btn-outline">Политика конфиденциальности</a>
+            <div class="cta">
+                <h2>Готовы говорить <span class="green">свободно</span>?</h2>
+                <p>Скачайте Veil и получите настоящую приватность. Без компромиссов.</p>
+                <div class="btn-group">
+                    <a href="https://github.com/qwerrtyu-bit/veil/releases" class="btn btn-primary">
+                        ⬇ Скачать Windows
+                    </a>
+                    <a href="https://github.com/qwerrtyu-bit/veil" class="btn btn-outline">
+                        GitHub
+                    </a>
+                </div>
             </div>
         </section>
 
         <footer>
-            <p>Создано <strong>void</strong> (0xTima)</p>
+            <p>Создано <strong>void</strong> (0xTima) • <a href="https://github.com/qwerrtyu-bit/veil/blob/main/LICENSE">MIT License</a> • <a href="https://github.com/qwerrtyu-bit/veil/blob/main/PRIVACY_POLICY.md">Приватность</a></p>
             <p style="margin-top: 8px;">Veil Messenger © 2026 — Zero Knowledge. Zero Trust.</p>
         </footer>
     </div>
