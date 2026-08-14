@@ -1,16 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../data/identity_service.dart';
 import '../core/constants.dart';
-
+import '../l10n/app_localizations.dart';
+import '../services/admin_service.dart';
 class RestoreIdentityScreen extends ConsumerStatefulWidget {
   const RestoreIdentityScreen({super.key});
 
   @override
-  ConsumerState<RestoreIdentityScreen> createState() =>
-      _RestoreIdentityScreenState();
+  ConsumerState<RestoreIdentityScreen> createState() => _RestoreIdentityScreenState();
 }
 
 class _RestoreIdentityScreenState extends ConsumerState<RestoreIdentityScreen> {
@@ -41,6 +40,7 @@ class _RestoreIdentityScreenState extends ConsumerState<RestoreIdentityScreen> {
   }
 
   void _verifySeed() {
+    final l10n = AppLocalizations.of(context)!;
     final words = _wordControllers.map((c) => c.text.trim().toLowerCase()).toList();
 
     if (words.any((w) => w.isEmpty)) {
@@ -64,6 +64,7 @@ class _RestoreIdentityScreenState extends ConsumerState<RestoreIdentityScreen> {
   }
 
   Future<void> _restore() async {
+    final l10n = AppLocalizations.of(context)!;
     final password = _passwordController.text;
     final confirm = _confirmPasswordController.text;
     final words = _wordControllers.map((c) => c.text.trim().toLowerCase()).toList();
@@ -97,10 +98,13 @@ class _RestoreIdentityScreenState extends ConsumerState<RestoreIdentityScreen> {
 
     await Future.delayed(const Duration(seconds: 2));
 
-    const secureStorage = FlutterSecureStorage();
-    await secureStorage.write(key: 'has_identity', value: 'true');
-    await secureStorage.write(key: 'password', value: password);
-    await secureStorage.write(key: 'seed_phrase', value: words.join(' '));
+    final seedPhrase = words.join(' ');
+    await _identityService.saveSeedPhrase(seedPhrase);
+    await _identityService.setHasIdentity(true);
+    await _identityService.savePassword(password);
+
+    final keyPair = _identityService.generateKeyPair(words);
+    await _identityService.saveKeyPair(keyPair['publicKey']!, keyPair['privateKey']!);
 
     if (!mounted) return;
 
@@ -116,6 +120,7 @@ class _RestoreIdentityScreenState extends ConsumerState<RestoreIdentityScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
         title: const Text(''),

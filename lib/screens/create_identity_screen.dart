@@ -3,13 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../data/identity_service.dart';
 import '../core/constants.dart';
+import '../l10n/app_localizations.dart';
 
 class CreateIdentityScreen extends ConsumerStatefulWidget {
   const CreateIdentityScreen({super.key});
 
   @override
-  ConsumerState<CreateIdentityScreen> createState() =>
-      _CreateIdentityScreenState();
+  ConsumerState<CreateIdentityScreen> createState() => _CreateIdentityScreenState();
 }
 
 class _CreateIdentityScreenState extends ConsumerState<CreateIdentityScreen> {
@@ -18,6 +18,7 @@ class _CreateIdentityScreenState extends ConsumerState<CreateIdentityScreen> {
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
   String? _errorText;
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -32,8 +33,7 @@ class _CreateIdentityScreenState extends ConsumerState<CreateIdentityScreen> {
 
     if (password.length < VeilConstants.passwordMinLength) {
       setState(() {
-        _errorText =
-            'Пароль должен быть не менее ${VeilConstants.passwordMinLength} символов';
+        _errorText = 'Пароль должен быть не менее ${VeilConstants.passwordMinLength} символов';
       });
       return;
     }
@@ -47,13 +47,21 @@ class _CreateIdentityScreenState extends ConsumerState<CreateIdentityScreen> {
 
     setState(() {
       _errorText = null;
+      _isLoading = true;
     });
 
-    final identityService = IdentityService();
-    await identityService.savePassword(password);
+    try {
+      final identityService = IdentityService();
+      await identityService.savePassword(password);
 
-    if (!mounted) return;
-    context.go('/seed-display');
+      if (!mounted) return;
+      context.go('/seed-display');
+    } catch (e) {
+      setState(() {
+        _errorText = 'Ошибка сохранения пароля: $e';
+        _isLoading = false;
+      });
+    }
   }
 
   @override
@@ -165,8 +173,17 @@ class _CreateIdentityScreenState extends ConsumerState<CreateIdentityScreen> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _continue,
-                  child: const Text('Продолжить'),
+                  onPressed: _isLoading ? null : _continue,
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('Продолжить'),
                 ),
               ),
               const SizedBox(height: 24),

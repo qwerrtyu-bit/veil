@@ -1,12 +1,14 @@
-// ========== lib/screens/plugins_screen.dart ==========
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:http/http.dart' as http;
-import '../data/plugin_scanner.dart';
+
+import '../plugins/plugin_manager.dart';
+import '../plugins/plugin_loader.dart';
+import '../plugins/veil_plugins.dart';
+import '../l10n/app_localizations.dart';
 
 class PluginsScreen extends ConsumerStatefulWidget {
   const PluginsScreen({super.key});
@@ -17,226 +19,376 @@ class PluginsScreen extends ConsumerStatefulWidget {
 
 class _PluginsScreenState extends ConsumerState<PluginsScreen> {
   final List<Map<String, dynamic>> _plugins = [];
+  final List<String> _installed = [];
+  bool _isLoading = true;
+
+  final List<Map<String, dynamic>> _availablePlugins = [
+    {
+      'id': VeilTranslator.id,
+      'name': VeilTranslator.name,
+      'author': VeilTranslator.author,
+      'version': VeilTranslator.version,
+      'description': 'Перевод сообщений на любой язык',
+      'type': 'chat',
+      'price': 'Бесплатно',
+      'icon': '🌐',
+      'status': 'approved',
+    },
+    {
+      'id': VeilReminder.id,
+      'name': VeilReminder.name,
+      'author': VeilReminder.author,
+      'version': VeilReminder.version,
+      'description': 'Напоминания о важных сообщениях',
+      'type': 'chat',
+      'price': 'Бесплатно',
+      'icon': '⏰',
+      'status': 'approved',
+    },
+    {
+      'id': VeilStats.id,
+      'name': VeilStats.name,
+      'author': VeilStats.author,
+      'version': VeilStats.version,
+      'description': 'Статистика чата: активность, слова, участники',
+      'type': 'analytics',
+      'price': 'Бесплатно',
+      'icon': '📊',
+      'status': 'approved',
+    },
+    {
+      'id': VeilScheduler.id,
+      'name': VeilScheduler.name,
+      'author': VeilScheduler.author,
+      'version': VeilScheduler.version,
+      'description': 'Отложенная отправка сообщений',
+      'type': 'chat',
+      'price': 'Бесплатно',
+      'icon': '📅',
+      'status': 'approved',
+    },
+    {
+      'id': VeilSafeBackup.id,
+      'name': VeilSafeBackup.name,
+      'author': VeilSafeBackup.author,
+      'version': VeilSafeBackup.version,
+      'description': 'Автоматический бэкап чатов',
+      'type': 'security',
+      'price': 'Бесплатно',
+      'icon': '💾',
+      'status': 'approved',
+    },
+  ];
 
   @override
   void initState() {
     super.initState();
-    _loadPlugins();
-    _loadFromRegistry();
+    _loadData();
   }
 
-  void _loadPlugins() {
-    final box = Hive.box('messages');
-    final raw = box.get('plugins', defaultValue: <Map<String, dynamic>>[]);
+  void _loadData() {
+    setState(() => _isLoading = true);
+    
+    final manager = PluginManager();
+    _installed.clear();
+    _installed.addAll(manager.getInstalledPlugins());
+    
     _plugins.clear();
-    if (raw is List) {
-      _plugins.addAll(raw.where((item) => item is Map).map((item) => Map<String, dynamic>.from(item as Map)));
-    }
-    if (_plugins.isEmpty) {
-      _plugins.addAll([
-        {
-          'id': '1', 'name': 'Тёмная тема Pro', 'author': 'void', 'type': 'theme',
-          'price': 'Бесплатно', 'status': 'approved', 'description': 'Расширенная тёмная тема с настройками цветов',
-        },
-        {
-          'id': '2', 'name': 'Антиспам фильтр', 'author': '0xTima', 'type': 'filter',
-          'price': '299 ₽', 'status': 'approved', 'description': 'Автоматическое удаление спам-сообщений',
-        },
-        {
-          'id': '3', 'name': 'Экспорт в PDF', 'author': 'user123', 'type': 'export',
-          'price': 'Бесплатно', 'status': 'pending', 'description': 'Выгрузка чатов в PDF формат',
-        },
-      ]);
-      Hive.box('messages').put('plugins', _plugins);
-    }
-    setState(() {});
+    _plugins.addAll(_availablePlugins);
+    
+    setState(() => _isLoading = false);
   }
 
-  Future<void> _loadFromRegistry() async {
-    try {
-      final response = await http.get(Uri.parse('https://localhost:8443/plugins'));
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final registryPlugins = data['plugins'] as List;
-        setState(() {
-          for (final p in registryPlugins) {
-            if (p is Map) {
-              final exists = _plugins.any((lp) => lp['id'] == p['id']);
-              if (!exists) {
-                _plugins.add(Map<String, dynamic>.from(p));
-              }
-            }
-          }
-        });
-      }
-    } catch (_) {}
-  }
-
-  void _installFromFile() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.any,
-      withData: true,
-    );
-
-    if (result == null || result.files.isEmpty) return;
-
-    final file = result.files.first;
-    if (file.bytes == null) return;
-    if (!file.name.endsWith('.veilP')) {
-      if (!mounted) return;
+  Future<void> _installPlugin(String id) async {
+    final manager = PluginManager();
+    
+    if (manager.isPluginInstalled(id)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Выберите файл .veilP'), backgroundColor: Colors.red),
-      );
-      return;
-    }
-
-    final code = utf8.decode(file.bytes!);
-
-    final scanner = PluginScanner();
-    final scanResult = scanner.scan(code);
-
-    if (!scanResult.safe) {
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: Theme.of(context).colorScheme.surface,
-          title: const Text('⚠️ Опасный плагин'),
-          content: Text(scanResult.message),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена')),
-          ],
+        const SnackBar(
+          content: Text('Плагин уже установлен'),
+          backgroundColor: Colors.orange,
         ),
       );
       return;
     }
 
-    final box = Hive.box('messages');
-    final raw = box.get('plugins');
-    List<Map<String, dynamic>> pluginsList = [];
-    if (raw is List) {
-      for (final item in raw) {
-        if (item is Map) pluginsList.add(Map<String, dynamic>.from(item));
-      }
+    try {
+      await manager.installPlugin(id);
+      _loadData();
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Плагин установлен!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Ошибка: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
-
-    pluginsList.add({
-      'id': DateTime.now().millisecondsSinceEpoch.toString(),
-      'name': file.name.replaceAll('.veilP', ''),
-      'author': 'Локальный',
-      'type': 'custom',
-      'price': 'Бесплатно',
-      'status': 'approved',
-      'description': 'Установлен из файла',
-    });
-
-    box.put('plugins', pluginsList);
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Плагин установлен!'), backgroundColor: Color(0xFF10B981)),
-    );
-
-    _loadPlugins();
   }
 
-  void _submitPlugin() {
-    showDialog(
+  Future<void> _uninstallPlugin(String id) async {
+    final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A26),
-        title: const Text('Отправить плагин', style: TextStyle(color: Color(0xFFE0E0E0))),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Отправьте ваш .veilP файл на проверку:\n\n📧 veil.plugins@proton.me\n📱 @VeilMessenger\n\nПроверка занимает 1-2 дня.',
-              style: TextStyle(color: Color(0xFF888899)),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              '⚠️ Разработчик Veil не несёт ответственности за сторонние плагины. Каждый плагин проходит обязательную проверку антивирусом. Установка плагина означает согласие с политикой конфиденциальности.',
-              style: TextStyle(color: Colors.orange, fontSize: 11),
-            ),
-          ],
-        ),
+        title: const Text('Удалить плагин?'),
+        content: const Text('Плагин будет удалён. Это действие можно отменить повторной установкой.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Понятно')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Удалить', style: TextStyle(color: Colors.red)),
+          ),
         ],
       ),
     );
+
+    if (confirm == true) {
+      final manager = PluginManager();
+      await manager.uninstallPlugin(id);
+      _loadData();
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Плагин удалён'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    }
+  }
+
+  Future<void> _installFromFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['veilP'],
+        withData: true,
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      final file = result.files.first;
+      if (file.bytes == null) return;
+
+      final content = utf8.decode(file.bytes!);
+      final data = jsonDecode(content) as Map<String, dynamic>;
+      
+      final pluginId = data['id'] as String?;
+      if (pluginId == null) {
+        throw Exception('Не найден ID плагина');
+      }
+
+      final manager = PluginManager();
+      await manager.installPlugin(pluginId);
+      _loadData();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Плагин "${data['name'] ?? pluginId}" установлен!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Ошибка: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final free = _plugins.where((p) => p['price'] == 'Бесплатно').toList();
-    final paid = _plugins.where((p) => p['price'] != 'Бесплатно').toList();
+    final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0F),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0A0A0F),
-        title: const Text('Плагины (.veilP)'),
-        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go('/chats')),
+        backgroundColor: theme.scaffoldBackgroundColor,
+        title: Text(l10n.plugins),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.go('/chats'),
+        ),
         actions: [
-          IconButton(icon: const Icon(Icons.file_open), onPressed: _installFromFile, tooltip: 'Установить из файла'),
-          IconButton(icon: const Icon(Icons.add), onPressed: _submitPlugin),
+          IconButton(
+            icon: const Icon(Icons.file_open),
+            onPressed: _installFromFile,
+            tooltip: 'Установить из .veilP',
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadData,
+            tooltip: 'Обновить',
+          ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          if (free.isNotEmpty) ...[
-            _buildSection('Бесплатные'),
-            ...free.map((p) => _buildPluginCard(p)),
-          ],
-          if (paid.isNotEmpty) ...[
-            _buildSection('Платные'),
-            ...paid.map((p) => _buildPluginCard(p)),
-          ],
-          if (_plugins.isEmpty)
-            const Center(child: Text('Нет плагинов', style: TextStyle(color: Color(0xFF888899)))),
-        ],
-      ),
-    );
-  }
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: _plugins.length,
+              itemBuilder: (context, index) {
+                final plugin = _plugins[index];
+                final isInstalled = _installed.contains(plugin['id']);
+                final isActive = isInstalled;
 
-  Widget _buildSection(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 16, bottom: 8),
-      child: Text(title.toUpperCase(),
-          style: const TextStyle(color: Color(0xFF888899), fontSize: 12, fontWeight: FontWeight.w700)),
-    );
-  }
-
-  Widget _buildPluginCard(Map<String, dynamic> plugin) {
-    final isPending = plugin['status'] == 'pending';
-    return Card(
-      color: const Color(0xFF1A1A26),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: ListTile(
-        leading: Icon(
-          plugin['type'] == 'theme' ? Icons.palette : plugin['type'] == 'filter' ? Icons.filter_alt : Icons.download,
-          color: isPending ? Colors.orange : const Color(0xFF4ADE80),
-        ),
-        title: Text(plugin['name'] as String, style: const TextStyle(color: Color(0xFFE0E0E0))),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(plugin['description'] as String, style: const TextStyle(color: Color(0xFF888899), fontSize: 12)),
-            Row(children: [
-              Text('от ${plugin['author']}', style: const TextStyle(color: Color(0xFF888899), fontSize: 11)),
-              const SizedBox(width: 8),
-              Text(plugin['price'] as String, style: TextStyle(color: const Color(0xFF4ADE80), fontSize: 11, fontWeight: FontWeight.w600)),
-              if (isPending) ...[
-                const SizedBox(width: 8),
-                const Text('На проверке', style: TextStyle(color: Colors.orange, fontSize: 11)),
-              ],
-            ]),
-          ],
-        ),
-        onTap: () => context.go('/plugin-detail', extra: plugin),
-      ),
+                return Card(
+                  color: theme.colorScheme.surface,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    side: BorderSide(
+                      color: isInstalled 
+                          ? const Color(0xFF10B981).withOpacity(0.3) 
+                          : Colors.transparent,
+                    ),
+                  ),
+                  margin: const EdgeInsets.only(bottom: 10),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 50,
+                          height: 50,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF6C5CE7).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Center(
+                            child: Text(
+                              plugin['icon'] ?? '🧩',
+                              style: const TextStyle(fontSize: 24),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    plugin['name'] ?? 'Плагин',
+                                    style: TextStyle(
+                                      color: theme.colorScheme.onSurface,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  if (isInstalled)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: isActive 
+                                            ? const Color(0xFF10B981).withOpacity(0.15)
+                                            : Colors.orange.withOpacity(0.15),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Text(
+                                        isActive ? 'Активен' : 'Отключён',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600,
+                                          color: isActive 
+                                              ? const Color(0xFF10B981)
+                                              : Colors.orange,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              Text(
+                                plugin['description'] ?? '',
+                                style: TextStyle(
+                                  color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                  fontSize: 13,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Text(
+                                    '👤 ${plugin['author']}',
+                                    style: TextStyle(
+                                      color: theme.colorScheme.onSurface.withOpacity(0.4),
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    '📦 ${plugin['version']}',
+                                    style: TextStyle(
+                                      color: theme.colorScheme.onSurface.withOpacity(0.4),
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                  if (plugin['price'] != 'Бесплатно') ...[
+                                    const SizedBox(width: 12),
+                                    Text(
+                                      '💰 ${plugin['price']}',
+                                      style: TextStyle(
+                                        color: const Color(0xFF6C5CE7),
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (!isInstalled)
+                          ElevatedButton(
+                            onPressed: () => _installPlugin(plugin['id']),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF6C5CE7),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: const Text(
+                              'Установить',
+                              style: TextStyle(color: Colors.white, fontSize: 12),
+                            ),
+                          )
+                        else
+                          OutlinedButton(
+                            onPressed: () => _uninstallPlugin(plugin['id']),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Colors.red),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: const Text(
+                              'Удалить',
+                              style: TextStyle(color: Colors.red, fontSize: 12),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
     );
   }
 }

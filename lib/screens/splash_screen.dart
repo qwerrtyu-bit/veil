@@ -2,10 +2,9 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../data/identity_service.dart';
 import '../core/constants.dart';
-
-final secureStorage = FlutterSecureStorage();
+import '../l10n/app_localizations.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -17,39 +16,63 @@ class SplashScreen extends ConsumerStatefulWidget {
 class _SplashScreenState extends ConsumerState<SplashScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
+  late Animation<double> _fadeAnimation;
+  late Animation<double> _scaleAnimation;
+  late Animation<Offset> _slideAnimation;
   final _random = Random();
-  final List<_GlowLine> _lines = [];
+  final List<_Particle> _particles = [];
 
   @override
   void initState() {
     super.initState();
-    _generateLines();
+    _generateParticles();
 
     _controller = AnimationController(
-      duration: const Duration(seconds: 3),
+      duration: const Duration(seconds: 4),
       vsync: this,
-    )..repeat();
+    );
 
-    Future.delayed(const Duration(seconds: 2), _checkAuth);
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: const Interval(0.0, 0.6, curve: Curves.easeOut)),
+    );
+
+    _scaleAnimation = Tween<double>(begin: 0.6, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: const Interval(0.2, 0.7, curve: Curves.easeOutBack)),
+    );
+
+    _slideAnimation = Tween<Offset>(begin: const Offset(0, 30), end: Offset.zero).animate(
+      CurvedAnimation(parent: _controller, curve: const Interval(0.3, 0.7, curve: Curves.easeOut)),
+    );
+
+    _controller.forward();
+
+    Future.delayed(const Duration(seconds: 3), _checkAuth);
   }
 
-  void _generateLines() {
-    for (int i = 0; i < 15; i++) {
-      _lines.add(_GlowLine(
-        startX: _random.nextDouble(),
-        startY: _random.nextDouble(),
-        speed: 0.2 + _random.nextDouble() * 0.8,
-        length: 50 + _random.nextDouble() * 150,
-        angle: _random.nextDouble() * pi * 2,
-        opacity: 0.1 + _random.nextDouble() * 0.3,
+  void _generateParticles() {
+    for (int i = 0; i < 30; i++) {
+      _particles.add(_Particle(
+        x: _random.nextDouble(),
+        y: _random.nextDouble(),
+        size: 2 + _random.nextDouble() * 4,
+        speedX: -0.5 + _random.nextDouble() * 1,
+        speedY: -0.5 + _random.nextDouble() * 1,
+        opacity: 0.2 + _random.nextDouble() * 0.5,
+        color: [
+          const Color(0xFF6C5CE7),
+          const Color(0xFF8B7CF0),
+          const Color(0xFF10B981),
+          const Color(0xFF4ADE80),
+        ][_random.nextInt(4)],
       ));
     }
   }
 
   Future<void> _checkAuth() async {
-    final hasIdentity = await secureStorage.read(key: 'has_identity');
+    final identityService = IdentityService();
+    final hasIdentity = await identityService.hasIdentity();
     if (!mounted) return;
-    if (hasIdentity == 'true') {
+    if (hasIdentity) {
       context.go('/lock');
     } else {
       context.go('/onboarding');
@@ -68,89 +91,216 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       body: Container(
         width: double.infinity,
         height: double.infinity,
-        decoration: const BoxDecoration(color: Color(0xFF0A0A0F)),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF0A0A0F),
+              Color(0xFF1A1A2E),
+              Color(0xFF0A0A0F),
+            ],
+          ),
+        ),
         child: Stack(
           children: [
-            // Анимированные линии
+            // Анимированные частицы
             AnimatedBuilder(
               animation: _controller,
               builder: (context, child) {
                 return CustomPaint(
-                  painter: _LinePainter(
-                    lines: _lines,
-                    time: _controller.value,
+                  painter: _ParticlePainter(
+                    particles: _particles,
+                    time: _controller.value * 2,
                   ),
                   size: Size.infinite,
                 );
               },
             ),
-            // Логотип и текст
+            // Градиентное свечение
+            Positioned(
+              top: -100,
+              right: -100,
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0.0, end: 1.0),
+                duration: const Duration(milliseconds: 1500),
+                curve: Curves.easeOut,
+                builder: (context, value, child) {
+                  return Opacity(
+                    opacity: value * 0.4,
+                    child: Container(
+                      width: 400,
+                      height: 400,
+                      decoration: BoxDecoration(
+                        gradient: RadialGradient(
+                          colors: [
+                            const Color(0xFF6C5CE7).withOpacity(0.3),
+                            Colors.transparent,
+                          ],
+                        ),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            Positioned(
+              bottom: -100,
+              left: -100,
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0.0, end: 1.0),
+                duration: const Duration(milliseconds: 1800),
+                curve: Curves.easeOut,
+                builder: (context, value, child) {
+                  return Opacity(
+                    opacity: value * 0.3,
+                    child: Container(
+                      width: 300,
+                      height: 300,
+                      decoration: BoxDecoration(
+                        gradient: RadialGradient(
+                          colors: [
+                            const Color(0xFF10B981).withOpacity(0.2),
+                            Colors.transparent,
+                          ],
+                        ),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            // Контент
             Center(
               child: FadeTransition(
-                opacity: Tween<double>(begin: 0.0, end: 1.0).animate(
-                  CurvedAnimation(parent: _controller, curve: const Interval(0.0, 0.5)),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Логотип
-                    Container(
-                      width: 90,
-                      height: 90,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(22),
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF4ADE80), Color(0xFF22C55E)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
+                opacity: _fadeAnimation,
+                child: ScaleTransition(
+                  scale: _scaleAnimation,
+                  child: SlideTransition(
+                    position: _slideAnimation,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Логотип с анимацией
+                        TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 0.0, end: 1.0),
+                          duration: const Duration(milliseconds: 1000),
+                          curve: Curves.easeOutBack,
+                          builder: (context, scale, child) {
+                            return Transform.scale(
+                              scale: 0.8 + scale * 0.2,
+                              child: Container(
+                                width: 100,
+                                height: 100,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(28),
+                                  gradient: const LinearGradient(
+                                    colors: [
+                                      Color(0xFF6C5CE7),
+                                      Color(0xFF8B7CF0),
+                                      Color(0xFF10B981),
+                                    ],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFF6C5CE7).withOpacity(0.4),
+                                      blurRadius: 50,
+                                      spreadRadius: 10,
+                                    ),
+                                  ],
+                                ),
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.lock_outline_rounded,
+                                    color: Colors.white,
+                                    size: 44,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
                         ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFF4ADE80).withOpacity(0.4),
-                            blurRadius: 40,
-                            spreadRadius: 5,
+                        const SizedBox(height: 32),
+                        // Название
+                        ShaderMask(
+                          shaderCallback: (bounds) {
+                            return const LinearGradient(
+                              colors: [
+                                Color(0xFFF4F4F5),
+                                Color(0xFF6C5CE7),
+                              ],
+                            ).createShader(bounds);
+                          },
+                          child: Text(
+                            VeilConstants.appName,
+                            style: const TextStyle(
+                              fontFamily: 'SpaceMono',
+                              fontSize: 44,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                              letterSpacing: 6,
+                            ),
                           ),
-                        ],
-                      ),
-                      child: const Icon(Icons.lock_outline_rounded, color: Color(0xFF0A0A0F), size: 42),
+                        ),
+                        const SizedBox(height: 12),
+                        // Слоган
+                        Text(
+                          VeilConstants.tagline,
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: const Color(0xFF888899),
+                            letterSpacing: 3,
+                            fontWeight: FontWeight.w300,
+                          ),
+                        ),
+                        const SizedBox(height: 40),
+                        // Анимированные точки загрузки
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: List.generate(3, (index) {
+                            return TweenAnimationBuilder<double>(
+                              tween: Tween(begin: 0.0, end: 1.0),
+                              duration: Duration(milliseconds: 600 + index * 200),
+                              curve: Curves.easeInOut,
+                              builder: (context, value, child) {
+                                return Container(
+                                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF6C5CE7).withOpacity(0.3 + value * 0.7),
+                                    shape: BoxShape.circle,
+                                  ),
+                                );
+                              },
+                            );
+                          }),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 28),
-                    Text(
-                      VeilConstants.appName,
-                      style: const TextStyle(
-                        fontFamily: 'SpaceMono',
-                        fontSize: 36,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFFE0E0E0),
-                        letterSpacing: 4,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      VeilConstants.tagline,
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: const Color(0xFF888899),
-                        letterSpacing: 2,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
-            // Версия внизу
+            // Версия
             Positioned(
               bottom: 40,
               left: 0,
               right: 0,
               child: FadeTransition(
-                opacity: Tween<double>(begin: 0.0, end: 1.0).animate(
-                  CurvedAnimation(parent: _controller, curve: const Interval(0.3, 0.8)),
-                ),
+                opacity: _fadeAnimation,
                 child: Text(
                   'v${VeilConstants.version}',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Color(0xFF444455), fontSize: 12, fontFamily: 'SpaceMono'),
+                  style: const TextStyle(
+                    color: Color(0xFF444455),
+                    fontSize: 12,
+                    fontFamily: 'SpaceMono',
+                  ),
                 ),
               ),
             ),
@@ -161,47 +311,46 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   }
 }
 
-class _GlowLine {
-  final double startX, startY, speed, length, angle, opacity;
-  _GlowLine({
-    required this.startX,
-    required this.startY,
-    required this.speed,
-    required this.length,
-    required this.angle,
+class _Particle {
+  final double x, y;
+  final double size;
+  final double speedX, speedY;
+  final double opacity;
+  final Color color;
+
+  _Particle({
+    required this.x,
+    required this.y,
+    required this.size,
+    required this.speedX,
+    required this.speedY,
     required this.opacity,
+    required this.color,
   });
 }
 
-class _LinePainter extends CustomPainter {
-  final List<_GlowLine> lines;
+class _ParticlePainter extends CustomPainter {
+  final List<_Particle> particles;
   final double time;
 
-  _LinePainter({required this.lines, required this.time});
+  _ParticlePainter({required this.particles, required this.time});
 
   @override
   void paint(Canvas canvas, Size size) {
-    for (final line in lines) {
-      final progress = (time * line.speed) % 1.0;
-      final x = (line.startX + progress * cos(line.angle)) * size.width;
-      final y = (line.startY + progress * sin(line.angle)) * size.height;
-      final endX = x + cos(line.angle) * line.length;
-      final endY = y + sin(line.angle) * line.length;
+    for (final p in particles) {
+      final x = (p.x + time * p.speedX * 0.02) % 1.0 * size.width;
+      final y = (p.y + time * p.speedY * 0.02) % 1.0 * size.height;
 
       final paint = Paint()
-        ..shader = LinearGradient(
-          colors: [
-            const Color(0xFF4ADE80).withOpacity(line.opacity),
-            const Color(0xFF4ADE80).withOpacity(0),
-          ],
-        ).createShader(Rect.fromPoints(Offset(x, y), Offset(endX, endY)))
-        ..strokeWidth = 1.5
-        ..style = PaintingStyle.stroke;
+        ..color = p.color.withOpacity(p.opacity * (0.5 + 0.5 * (1 + sin(time * 2 + p.x * 10)) / 2))
+        ..style = PaintingStyle.fill;
 
-      canvas.drawLine(Offset(x, y), Offset(endX, endY), paint);
+      final radius = p.size * (1 + 0.3 * sin(time * 1.5 + p.y * 5));
+
+      canvas.drawCircle(Offset(x, y), radius, paint);
     }
   }
 
   @override
-  bool shouldRepaint(covariant _LinePainter oldDelegate) => true;
+  bool shouldRepaint(covariant _ParticlePainter oldDelegate) => true;
 }

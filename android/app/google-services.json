@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "459563944680",
+    "project_id": "veil-messenger-aea31",
+    "storage_bucket": "veil-messenger-aea31.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:459563944680:android:251ff7b4779855fdcf975d",
+        "android_client_info": {
+          "package_name": "com.veil.messenger"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCUVRPfElp2gtQbs78lB-NlvGjUkTlQ4Dw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

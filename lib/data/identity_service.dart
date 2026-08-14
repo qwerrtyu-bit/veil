@@ -1,27 +1,171 @@
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:bip39_mnemonic/bip39_mnemonic.dart' as bip39;
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class IdentityService {
-  Box get _secureStorage => Hive.box('secure');
+  final _secureStorage = const FlutterSecureStorage();
+  Box get _hiveSecure => Hive.box('secure');
 
-  List<String> generateSeedPhrase() {
-    final random = Random.secure();
-    final entropy = List<int>.generate(32, (_) => random.nextInt(256));
-    final mnemonic = bip39.Mnemonic(entropy, bip39.Language.english);
-    return mnemonic.words;
-  }
+  // === Управление личностью ===
 
-  bool isValidSeedPhrase(List<String> words) {
-    if (words.length != 24) return false;
-    for (final word in words) {
-      if (word.trim().isEmpty) return false;
-      if (word.contains(' ')) return false;
+  Future<bool> hasIdentity() async {
+    if (kIsWeb) {
+      final has = _hiveSecure.get('has_identity');
+      return has == true;
     }
-    return true;
+    final has = await _secureStorage.read(key: 'has_identity');
+    if (has == 'true') return true;
+    final oldHas = _hiveSecure.get('has_identity');
+    if (oldHas == true) {
+      await _secureStorage.write(key: 'has_identity', value: 'true');
+      await _hiveSecure.delete('has_identity');
+      return true;
+    }
+    return false;
   }
+
+  Future<void> setHasIdentity(bool value) async {
+    if (kIsWeb) {
+      await _hiveSecure.put('has_identity', value);
+      return;
+    }
+    await _secureStorage.write(key: 'has_identity', value: value ? 'true' : 'false');
+  }
+
+  Future<void> saveSeedPhrase(String phrase) async {
+    if (kIsWeb) {
+      await _hiveSecure.put('seed_phrase', phrase);
+      return;
+    }
+    await _secureStorage.write(key: 'seed_phrase', value: phrase);
+  }
+
+  Future<String?> getSeedPhrase() async {
+    if (kIsWeb) {
+      return _hiveSecure.get('seed_phrase');
+    }
+    final phrase = await _secureStorage.read(key: 'seed_phrase');
+    if (phrase == null) {
+      final oldPhrase = _hiveSecure.get('seed_phrase');
+      if (oldPhrase != null) {
+        await _secureStorage.write(key: 'seed_phrase', value: oldPhrase);
+        await _hiveSecure.delete('seed_phrase');
+        return oldPhrase;
+      }
+      return null;
+    }
+    return phrase;
+  }
+
+  // === Пароль ===
+
+  Future<void> savePassword(String password) async {
+    final hashed = hashPassword(password);
+    if (kIsWeb) {
+      await _hiveSecure.put('password_hash', hashed);
+      return;
+    }
+    await _secureStorage.write(key: 'password_hash', value: hashed);
+    await _secureStorage.delete(key: 'password');
+  }
+
+  Future<bool> checkPassword(String password) async {
+    String? storedHash;
+    if (kIsWeb) {
+      storedHash = _hiveSecure.get('password_hash');
+    } else {
+      storedHash = await _secureStorage.read(key: 'password_hash');
+    }
+
+    if (storedHash == null) {
+      final oldPassword = _hiveSecure.get('password');
+      if (oldPassword != null && oldPassword == password) {
+        await savePassword(password);
+        return true;
+      }
+      return false;
+    }
+    return verifyPassword(password, storedHash);
+  }
+
+  // === Ключи ===
+
+  Future<void> saveKeyPair(String publicKey, String privateKey) async {
+    if (kIsWeb) {
+      await _hiveSecure.put('public_key', publicKey);
+      await _hiveSecure.put('private_key', privateKey);
+      return;
+    }
+    await _secureStorage.write(key: 'public_key', value: publicKey);
+    await _secureStorage.write(key: 'private_key', value: privateKey);
+  }
+
+  Future<String?> getPublicKey() async {
+    if (kIsWeb) {
+      return _hiveSecure.get('public_key');
+    }
+    final key = await _secureStorage.read(key: 'public_key');
+    if (key == null) {
+      final oldKey = _hiveSecure.get('public_key');
+      if (oldKey != null) {
+        await _secureStorage.write(key: 'public_key', value: oldKey);
+        await _hiveSecure.delete('public_key');
+        return oldKey;
+      }
+      return null;
+    }
+    return key;
+  }
+
+  Future<String?> getPrivateKey() async {
+    if (kIsWeb) {
+      return _hiveSecure.get('private_key');
+    }
+    final key = await _secureStorage.read(key: 'private_key');
+    if (key == null) {
+      final oldKey = _hiveSecure.get('private_key');
+      if (oldKey != null) {
+        await _secureStorage.write(key: 'private_key', value: oldKey);
+        await _hiveSecure.delete('private_key');
+        return oldKey;
+      }
+      return null;
+    }
+    return key;
+  }
+
+  // === TOTP ===
+
+  Future<void> saveTotpSecret(String secret) async {
+    if (kIsWeb) {
+      await _hiveSecure.put('totp_secret', secret);
+      return;
+    }
+    await _secureStorage.write(key: 'totp_secret', value: secret);
+  }
+
+  Future<String?> getTotpSecret() async {
+    if (kIsWeb) {
+      return _hiveSecure.get('totp_secret');
+    }
+    final secret = await _secureStorage.read(key: 'totp_secret');
+    if (secret == null) {
+      final oldSecret = _hiveSecure.get('totp_secret');
+      if (oldSecret != null) {
+        await _secureStorage.write(key: 'totp_secret', value: oldSecret);
+        await _hiveSecure.delete('totp_secret');
+        return oldSecret;
+      }
+      return null;
+    }
+    return secret;
+  }
+
+  // === Остальные методы без изменений ===
 
   String hashPassword(String password) {
     final salt = _randomString(16);
@@ -47,25 +191,6 @@ class IdentityService {
     }
   }
 
-  Future<void> savePassword(String password) async {
-    final hashed = hashPassword(password);
-    await _secureStorage.put('password_hash', hashed);
-    await _secureStorage.delete('password');
-  }
-
-  Future<bool> checkPassword(String password) async {
-    final storedHash = _secureStorage.get('password_hash');
-    if (storedHash == null) {
-      final oldPassword = _secureStorage.get('password');
-      if (oldPassword != null && oldPassword == password) {
-        await savePassword(password);
-        return true;
-      }
-      return false;
-    }
-    return verifyPassword(password, storedHash);
-  }
-
   String generateTotpSecret() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
     final random = Random.secure();
@@ -83,31 +208,26 @@ class IdentityService {
     return false;
   }
 
-  Future<void> saveTotpSecret(String secret) async {
-    await _secureStorage.put('totp_secret', secret);
-  }
-
-  Future<String?> getTotpSecret() async {
-    return _secureStorage.get('totp_secret');
-  }
-
   Map<String, String> generateKeyPair(List<String> seedWords) {
     final phrase = seedWords.join(' ');
     final seed = _deriveSeed(phrase);
     return _generateEd25519KeyPair(seed);
   }
 
-  Future<void> saveKeyPair(String publicKey, String privateKey) async {
-    await _secureStorage.put('public_key', publicKey);
-    await _secureStorage.put('private_key', privateKey);
+  List<String> generateSeedPhrase() {
+    final random = Random.secure();
+    final entropy = List<int>.generate(32, (_) => random.nextInt(256));
+    final mnemonic = bip39.Mnemonic(entropy, bip39.Language.english);
+    return mnemonic.words;
   }
 
-  Future<String?> getPublicKey() async {
-    return _secureStorage.get('public_key');
-  }
-
-  Future<String?> getPrivateKey() async {
-    return _secureStorage.get('private_key');
+  bool isValidSeedPhrase(List<String> words) {
+    if (words.length != 24) return false;
+    for (final word in words) {
+      if (word.trim().isEmpty) return false;
+      if (word.contains(' ')) return false;
+    }
+    return true;
   }
 
   String _generateTotpCode(String secret, int counter) {

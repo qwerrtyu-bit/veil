@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import '../l10n/app_localizations.dart';
 
 class ChannelDetailScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic> channel;
@@ -21,12 +22,12 @@ class _ChannelDetailScreenState extends ConsumerState<ChannelDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _isOwner = widget.channel['author'] == 'void'; // Упрощённо
+    _isOwner = widget.channel['author'] == 'void';
     _loadSubscription();
     _loadPosts();
   }
 
-    void _loadSubscription() {
+  void _loadSubscription() {
     try {
       final box = Hive.box('settings');
       final subs = box.get('channel_subs');
@@ -76,6 +77,7 @@ class _ChannelDetailScreenState extends ConsumerState<ChannelDetailScreen> {
     }
     setState(() {});
   }
+
   void _sendPost() {
     final text = _postController.text.trim();
     if (text.isEmpty) return;
@@ -105,6 +107,7 @@ class _ChannelDetailScreenState extends ConsumerState<ChannelDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,

@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'dart:math';
+import '../data/identity_service.dart';
+import '../l10n/app_localizations.dart';
 
 class CreateGroupScreen extends ConsumerStatefulWidget {
   const CreateGroupScreen({super.key});
@@ -14,11 +16,21 @@ class CreateGroupScreen extends ConsumerStatefulWidget {
 class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
   final _nameController = TextEditingController();
   String _groupKey = '';
+  final _identityService = IdentityService();
+  String _currentUserKey = '';
 
   @override
   void initState() {
     super.initState();
+    _loadCurrentUser();
     _generateKey();
+  }
+
+  Future<void> _loadCurrentUser() async {
+    final key = await _identityService.getPublicKey();
+    setState(() {
+      _currentUserKey = key ?? 'unknown';
+    });
   }
 
   void _generateKey() {
@@ -30,6 +42,7 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
   }
 
   Future<void> _createGroup() async {
+    final l10n = AppLocalizations.of(context)!;
     final name = _nameController.text.trim();
     if (name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -39,8 +52,13 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
     }
 
     final groupsBox = Hive.box('messages');
-    final groups = groupsBox.get('groups_list', defaultValue: <Map<String, dynamic>>[]);
-    final groupsList = List<Map<String, dynamic>>.from(groups);
+    final raw = groupsBox.get('groups_list');
+    List<Map<String, dynamic>> groupsList = [];
+    if (raw is List) {
+      for (final item in raw) {
+        if (item is Map) groupsList.add(Map<String, dynamic>.from(item));
+      }
+    }
 
     final groupId = DateTime.now().millisecondsSinceEpoch.toString();
 
@@ -49,6 +67,8 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
       'name': name,
       'key': _groupKey,
       'createdAt': DateTime.now().toIso8601String(),
+      'owner': _currentUserKey,
+      'members': [_currentUserKey],
     });
 
     await groupsBox.put('groups_list', groupsList);
@@ -70,6 +90,7 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Создать группу'),

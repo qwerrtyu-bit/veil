@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../data/identity_service.dart';
 import '../core/constants.dart';
+import '../l10n/app_localizations.dart';
 
 class LockScreen extends ConsumerStatefulWidget {
   const LockScreen({super.key});
@@ -23,11 +24,13 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   int _attempts = 0;
   DateTime? _blockedUntil;
   int _blockLevel = 0;
+  bool _hasTotp = false;
 
   @override
   void initState() {
     super.initState();
     _checkPinMode();
+    _checkTotp();
   }
 
   void _checkPinMode() {
@@ -36,6 +39,11 @@ class _LockScreenState extends ConsumerState<LockScreen> {
     if (pin != null && pin.toString().length == 4) {
       setState(() => _usePin = true);
     }
+  }
+
+  Future<void> _checkTotp() async {
+    final totpSecret = await _identityService.getTotpSecret();
+    setState(() => _hasTotp = totpSecret != null && totpSecret.isNotEmpty);
   }
 
   @override
@@ -47,6 +55,8 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   }
 
   Future<void> _unlock() async {
+    final l10n = AppLocalizations.of(context)!;
+
     if (_usePin) {
       final pin = _pinController.text;
       final savedPin = Hive.box('settings').get('login_pin')?.toString();
@@ -60,33 +70,37 @@ class _LockScreenState extends ConsumerState<LockScreen> {
     }
 
     if (_blockedUntil != null && DateTime.now().isBefore(_blockedUntil!)) {
-      setState(() => _errorText = 'Повторите попытку позже');
+      setState(() => _errorText = l10n.tryLater);
       return;
     }
 
     final password = _passwordController.text;
     final totp = _totpController.text;
 
-    if (password.length < VeilConstants.passwordMinLength) {
-      setState(() => _errorText = 'Введите пароль');
+    if (password.isEmpty || password.length < VeilConstants.passwordMinLength) {
+      setState(() => _errorText = l10n.enterPassword);
       return;
     }
 
-    if (totp.length != VeilConstants.totpDigits) {
-      setState(() => _errorText = 'Введите 6-значный код');
-      return;
+    if (_hasTotp) {
+      if (totp.isEmpty || totp.length != VeilConstants.totpDigits) {
+        setState(() => _errorText = l10n.enterCode);
+        return;
+      }
     }
 
-    final ok = await _identityService.checkPassword(password);
-    if (!ok) {
+    final isPasswordCorrect = await _identityService.checkPassword(password);
+    if (!isPasswordCorrect) {
       _block();
       return;
     }
 
-    final totpSecret = await _identityService.getTotpSecret();
-    if (totpSecret != null && !_identityService.verifyTotp(totpSecret, totp)) {
-      _block();
-      return;
+    if (_hasTotp) {
+      final totpSecret = await _identityService.getTotpSecret();
+      if (totpSecret == null || !_identityService.verifyTotp(totpSecret, totp)) {
+        _block();
+        return;
+      }
     }
 
     _attempts = 0;
@@ -97,37 +111,71 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   }
 
   void _block() {
+    final l10n = AppLocalizations.of(context)!;
     _attempts++;
     if (_blockLevel == 0 && _attempts >= 5) {
       _blockLevel = 1;
       _blockedUntil = DateTime.now().add(const Duration(minutes: 1));
-      setState(() => _errorText = 'Повторите попытку позже');
+      setState(() => _errorText = l10n.tryLater);
     } else if (_blockLevel == 1 && _attempts >= 10) {
       _blockLevel = 2;
       _blockedUntil = DateTime.now().add(const Duration(minutes: 2));
-      setState(() => _errorText = 'Повторите попытку позже');
+      setState(() => _errorText = l10n.tryLater);
     } else if (_blockLevel == 2 && _attempts >= 15) {
       _blockLevel = 3;
       _blockedUntil = DateTime.now().add(const Duration(hours: 1));
-      setState(() => _errorText = 'Повторите попытку позже');
+      setState(() => _errorText = l10n.tryLater);
     } else if (_blockLevel == 3 && _attempts >= 20) {
       _blockLevel = 4;
       _blockedUntil = DateTime.now().add(const Duration(hours: 24));
-      setState(() => _errorText = 'Повторите попытку позже');
+      setState(() => _errorText = l10n.tryLater);
     } else {
-      setState(() => _errorText = 'Неверный пароль или код');
+      setState(() => _errorText = l10n.wrongPassword);
     }
   }
 
-  void _setupPin() {
-    final pinController = TextEditingController();
+  void _showResetDialog() {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: Theme.of(context).colorScheme.surface,
-        title: const Text('Настроить быстрый вход'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Восстановить личность?'),
+        content: const Text(
+          'Вы будете перенаправлены на экран восстановления. Все текущие данные будут сброшены.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await Hive.box('secure').clear();
+              await Hive.box('settings').clear();
+              await Hive.box('contacts').clear();
+              await Hive.box('messages').clear();
+              if (!mounted) return;
+              context.go('/onboarding');
+            },
+            child: const Text('Восстановить'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _setupPin() {
+    final pinController = TextEditingController();
+    final l10n = AppLocalizations.of(context)!;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        title: Text(l10n.setupPin),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Text('Придумайте 4-значный пин-код для быстрого входа без пароля и 2FA.'),
+          const Text('Придумайте 4-значный пин-код для быстрого входа.'),
           const SizedBox(height: 12),
           TextField(
             controller: pinController,
@@ -138,7 +186,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
           ),
         ]),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l10n.cancel)),
           TextButton(
             onPressed: () {
               final pin = pinController.text;
@@ -157,6 +205,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     return Scaffold(
       body: SafeArea(
@@ -175,10 +224,16 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                   child: Icon(Icons.lock_outline_rounded, size: 40, color: theme.colorScheme.primary),
                 ),
                 const SizedBox(height: 24),
-                Text('Вход в Veil', style: theme.textTheme.headlineMedium),
+                Text(l10n.login, style: theme.textTheme.headlineMedium),
                 const SizedBox(height: 8),
-                Text(_usePin ? 'Введите пин-код' : 'Введите пароль и код 2FA',
-                    style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey[600])),
+                Text(
+                  _usePin 
+                    ? l10n.loginPin 
+                    : _hasTotp 
+                      ? 'Введите пароль и код 2FA' 
+                      : 'Введите пароль',
+                  style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+                ),
                 const SizedBox(height: 32),
 
                 if (_usePin) ...[
@@ -203,7 +258,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                     controller: _passwordController,
                     obscureText: _obscurePassword,
                     decoration: InputDecoration(
-                      hintText: 'Пароль',
+                      hintText: l10n.enterPassword,
                       prefixIcon: const Icon(Icons.key),
                       suffixIcon: IconButton(
                         icon: Icon(_obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
@@ -211,21 +266,23 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _totpController,
-                    keyboardType: TextInputType.number,
-                    maxLength: 6,
-                    decoration: const InputDecoration(
-                      hintText: 'Код 2FA',
-                      prefixIcon: Icon(Icons.security),
-                      counterText: '',
+                  if (_hasTotp) ...[
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _totpController,
+                      keyboardType: TextInputType.number,
+                      maxLength: 6,
+                      decoration: const InputDecoration(
+                        hintText: 'Код 2FA (6 цифр)',
+                        prefixIcon: Icon(Icons.security),
+                        counterText: '',
+                      ),
                     ),
-                  ),
+                  ],
                   const SizedBox(height: 8),
                   TextButton(
                     onPressed: _setupPin,
-                    child: const Text('Настроить быстрый вход (пин)', style: TextStyle(fontSize: 12)),
+                    child: Text(l10n.setupPin, style: const TextStyle(fontSize: 12)),
                   ),
                 ],
 
@@ -236,9 +293,29 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                 const SizedBox(height: 24),
                 SizedBox(
                   width: double.infinity,
-                  child: ElevatedButton(onPressed: _unlock, child: const Text('Войти')),
+                  child: ElevatedButton(onPressed: _unlock, child: Text(l10n.login)),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
+                // ============================================================
+                // КНОПКА ВОССТАНОВЛЕНИЯ
+                // ============================================================
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: _showResetDialog,
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFF6C5CE7)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'Восстановить личность',
+                      style: TextStyle(color: Color(0xFF6C5CE7)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
                 TextButton(
                   onPressed: () async {
                     _attempts = 0;
@@ -251,7 +328,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                     if (!mounted) return;
                     context.go('/onboarding');
                   },
-                  child: Text('Сбросить личность', style: TextStyle(color: Colors.red[400])),
+                  child: Text(l10n.resetIdentity, style: TextStyle(color: Colors.red[400])),
                 ),
               ],
             ),

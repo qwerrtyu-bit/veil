@@ -1,3 +1,4 @@
+// lib/screens/access_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../data/crypto_service.dart';
+import '../l10n/app_localizations.dart';
+import '../services/admin_service.dart';
 
 class AccessScreen extends ConsumerStatefulWidget {
   const AccessScreen({super.key});
@@ -18,8 +21,8 @@ class _AccessScreenState extends ConsumerState<AccessScreen> {
   final _cryptoService = CryptoService();
   bool _isVerified = false;
   String? _errorText;
+  bool _isAdmin = false;
 
-  // QR-ключи
   final Map<String, String> _keys = {
     'Доступ ко всему': '1092829028272628389V73828299OOO01019929',
     'Шифр QR-кода': '2891010983883829101918283838',
@@ -31,6 +34,22 @@ class _AccessScreenState extends ConsumerState<AccessScreen> {
   @override
   void initState() {
     super.initState();
+    _checkAdmin();
+  }
+
+  Future<void> _checkAdmin() async {
+    final adminService = AdminService();
+    final isAdmin = await adminService.isAdmin();
+    if (!isAdmin) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Доступ запрещён'), backgroundColor: Colors.red),
+        );
+        context.go('/chats');
+      }
+      return;
+    }
+    setState(() => _isAdmin = true);
     _checkVerified();
   }
 
@@ -62,12 +81,23 @@ class _AccessScreenState extends ConsumerState<AccessScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
+
+    if (!_isAdmin) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
 
     if (!_isVerified) {
       return Scaffold(
         backgroundColor: theme.scaffoldBackgroundColor,
-        appBar: AppBar(title: const Text('Доступ')),
+        appBar: AppBar(
+          leading: IconButton(
+  icon: const Icon(Icons.arrow_back),
+  onPressed: () => context.go('/chats'),
+),title: const Text('Доступ')),
         body: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(

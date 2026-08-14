@@ -154,7 +154,7 @@ class PluginScanner {
   }
 
   List<String> _extractUrls(String code) {
-        final urlPattern = RegExp("https?://[^\\s\"']+");
+    final urlPattern = RegExp("https?://[^\\s\"']+");
     return urlPattern.allMatches(code).map((m) => m.group(0)!).toList();
   }
 

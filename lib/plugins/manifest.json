@@ -1,0 +1,59 @@
+{
+  "plugins": [
+    {
+      "id": "veil.translator",
+      "name": "Veil Translator 🌐",
+      "version": "1.0.0",
+      "author": "Veil Team",
+      "description": "Перевод сообщений на любой язык",
+      "type": "chat",
+      "price": "Бесплатно",
+      "status": "approved",
+      "permissions": ["chat", "storage", "network"]
+    },
+    {
+      "id": "veil.reminder",
+      "name": "Veil Reminder ⏰",
+      "version": "1.0.0",
+      "author": "Veil Team",
+      "description": "Напоминания о важных сообщениях",
+      "type": "chat",
+      "price": "Бесплатно",
+      "status": "approved",
+      "permissions": ["chat", "storage"]
+    },
+    {
+      "id": "veil.stats",
+      "name": "Veil Stats 📊",
+      "version": "1.0.0",
+      "author": "Veil Team",
+      "description": "Статистика чата: активность, слова, участники",
+      "type": "analytics",
+      "price": "Бесплатно",
+      "status": "approved",
+      "permissions": ["chat", "storage"]
+    },
+    {
+      "id": "veil.scheduler",
+      "name": "Veil Scheduler 📅",
+      "version": "1.0.0",
+      "author": "Veil Team",
+      "description": "Отложенная отправка сообщений",
+      "type": "chat",
+      "price": "Бесплатно",
+      "status": "approved",
+      "permissions": ["chat", "storage"]
+    },
+    {
+      "id": "veil.safe_backup",
+      "name": "Veil Safe Backup 💾",
+      "version": "1.0.0",
+      "author": "Veil Team",
+      "description": "Автоматический бэкап чатов",
+      "type": "security",
+      "price": "Бесплатно",
+      "status": "approved",
+      "permissions": ["storage"]
+    }
+  ]
+}

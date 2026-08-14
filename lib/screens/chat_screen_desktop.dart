@@ -1,20 +1,31 @@
-// ========== lib/screens/chat_screen_desktop.dart ==========
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:record/record.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:http/http.dart' as http;
 import '../data/chat_service.dart';
 import '../data/crypto_service.dart';
 import '../data/file_service.dart';
 import '../data/identity_service.dart';
-import '../data/p2p_service.dart';
+import '../providers/subscription_provider.dart';
+import '../models/subscription_model.dart';
+import '../widgets/chat/chat_base.dart';
+import '../widgets/chat/chat_message_bubble.dart';
+import '../widgets/chat/chat_input.dart';
 import '../widgets/encrypt_animation.dart';
+import '../widgets/message_context_menu.dart';
+import '../widgets/markdown_parser.dart';
+import '../services/export_service.dart';
+import '../core/constants.dart';
+import '../core/icons.dart';
+import '../widgets/chat/voice_recorder.dart';
+import '../widgets/animated_wallpaper.dart';
+import '../widgets/typing_indicator.dart';
+import '../plugins/plugin_manager.dart';
 
 class ChatScreenDesktop extends ConsumerStatefulWidget {
   final String contactId;
@@ -23,310 +34,908 @@ class ChatScreenDesktop extends ConsumerStatefulWidget {
   ConsumerState<ChatScreenDesktop> createState() => _ChatScreenDesktopState();
 }
 
-class _ChatScreenDesktopState extends ConsumerState<ChatScreenDesktop>
-    with SingleTickerProviderStateMixin {
-  final _messageController = TextEditingController();
-  final _scrollController = ScrollController();
+class _ChatScreenDesktopState extends ConsumerState<ChatScreenDesktop> {
+  late ChatBase _chat;
+  bool _showEmoji = false;
   final _chatService = ChatService();
   final _cryptoService = CryptoService();
   final _fileService = FileService();
   final _identityService = IdentityService();
   final _imagePicker = ImagePicker();
-  final _audioRecorder = AudioRecorder();
-  final _p2pService = P2PService();
-  bool _isRecording = false;
-  List<Map<String, dynamic>> _messages = [];
-  bool _showEmoji = false;
-  Map<String, dynamic>? _replyTo;
-  SecretKeyData? _sharedKey;
-  int _selfDestruct = 0;
-  bool _showMediaPanel = false;
-  late AnimationController _mediaController;
-  late Animation<double> _mediaAnimation;
+  final _exportService = ExportService();
 
-  final List<String> _stickers = [
-    '👍', '❤️', '😂', '😮', '😢', '😡', '🎉', '🔥', '💯', '✅', '👋', '🤝', '🔒', '🔑', '🛡️', '⚡', '🌟', '💎',
-  ];
-
-  final Map<String, Map<String, String>> _contacts = {
-    '1': {'name': 'Аноним', 'initial': 'А', 'status': 'В сети'},
-    '2': {'name': 'Крипто Энтузиаст', 'initial': 'К', 'status': 'Был(а) недавно'},
-    '3': {'name': 'void', 'initial': 'V', 'status': 'Разработчик'},
-    'f120b9055653991a9e97e54a53d31363c2081f8c09e90cbe38e11117f62cac27': {'name': 'ПК', 'initial': 'P', 'status': 'В сети'},
-    'd72600aa1aef91d8ae80ad6f8735f029dc1bca7cb74dd03ecea6ad55a13b09e0': {'name': 'iPhone', 'initial': 'i', 'status': 'В сети'},
-  };
+  final Map<String, Map<String, String>> _contacts = {};
+  String _chatTitle = '';
+  String _chatStatus = 'Офлайн';
+  bool _isLoadingChatInfo = true;
 
   @override
   void initState() {
     super.initState();
-    _mediaController = AnimationController(duration: const Duration(milliseconds: 300), vsync: this);
-    _mediaAnimation = CurvedAnimation(parent: _mediaController, curve: Curves.easeOutBack);
-    _p2pService.start();
-    _p2pService.onMessage(widget.contactId, (msg) => _loadMessages());
-    _initAndLoad();
+    _chat = ChatBase(contactId: widget.contactId);
+    _chat.setCallbacks(
+      onReactionLimitExceeded: (max) {
+        _showSnackBar('Достигнут лимит реакций ($max) для вашего тарифа');
+      },
+      onSnackBar: _showSnackBar,
+    );
+    _loadChatInfo();
   }
 
-  Future<void> _initAndLoad() async {
-    final myPrivateKey = await _identityService.getPrivateKey();
-    if (myPrivateKey != null) {
-      _sharedKey = _cryptoService.deriveSharedKey(myPrivateKey, widget.contactId);
-    } else {
-      _sharedKey = _cryptoService.createKeyFromString('veil_chat_${widget.contactId}');
-    }
-    _loadMessages();
-  }
-
-  void _loadMessages() async {
-    final savedMessages = _chatService.loadMessages(widget.contactId);
-    final savedFiles = _fileService.loadFiles(widget.contactId);
-    final decrypted = <Map<String, dynamic>>[];
-    if (savedMessages.isEmpty && savedFiles.isEmpty) {
-      final demo = {
-        '1': [{'text': 'Привет! 👋', 'isMe': false, 'time': '12:30'}, {'text': 'Привет! Рад тебя видеть в Veil. 🔒', 'isMe': true, 'time': '12:31'}],
-        '2': [{'text': 'Скинь свой публичный ключ 🔑', 'isMe': false, 'time': '15:10'}],
-        '3': [{'text': 'Новая версия Veil вышла! 🚀', 'isMe': false, 'time': '09:00'}],
-      }[widget.contactId] ?? [];
-      for (var msg in demo) {
-        final text = msg['text'] as String;
-        final encrypted = _sharedKey != null ? await _cryptoService.encrypt(text, _sharedKey!) : text;
-        _chatService.saveMessage(chatId: widget.contactId, text: encrypted, isMe: msg['isMe'] as bool, time: msg['time'] as String);
-      }
-    }
-    for (final msg in _chatService.loadMessages(widget.contactId)) {
-      final t = msg['text'] as String; String display = t;
-      if (_sharedKey != null && t.length > 50 && t.contains('\$')) {
-        try {
-          final parts = t.split('\$'); final encryptedKey = parts[0]; final encryptedMessage = parts[1];
-          final keyBase64 = await _cryptoService.decrypt(encryptedKey, _sharedKey!);
-          display = await _cryptoService.decrypt(encryptedMessage, SecretKeyData(base64.decode(keyBase64)));
-        } catch (_) {}
-      }
-      decrypted.add({'text': display, 'isMe': msg['isMe'], 'time': msg['time'], 'type': 'text'});
-    }
-    for (final f in savedFiles) {
-      decrypted.add({'type': 'file', 'fileName': f['fileName'], 'text': '📎 ${f['fileName']}', 'isMe': f['isMe'], 'time': f['time']});
-    }
-    setState(() => _messages = decrypted);
-  }
-
-  void _onTextFieldChanged(String value) {
-    if (value.endsWith('\n') && !value.contains('\n\n')) {
-      _messageController.text = value.substring(0, value.length - 1);
-      _messageController.selection = TextSelection.fromPosition(TextPosition(offset: _messageController.text.length));
-      _sendMessage();
-    }
-  }
-
-  void _sendMessage() async {
-    final text = _messageController.text.trim(); if (text.isEmpty) return;
-    final now = TimeOfDay.now(); final time = '${now.hour}:${now.minute.toString().padLeft(2, '0')}';
-    String encryptedText;
-    if (_sharedKey != null) {
-      final ephemeralKey = _cryptoService.generateEphemeralKey();
-      final encryptedMessage = await _cryptoService.encrypt(text, ephemeralKey);
-      final encryptedKey = await _cryptoService.encrypt(base64.encode(ephemeralKey.data), _sharedKey!);
-      encryptedText = '$encryptedKey\$$encryptedMessage';
-    } else {
-      encryptedText = text;
-    }
-    final message = {'type': 'text', 'text': text, 'isMe': true, 'time': time, 'isEncrypted': _sharedKey != null, 'animating': _sharedKey != null, 'replyTo': _replyTo};
-    setState(() { _messages.add(message); _replyTo = null; });
-    _chatService.saveMessage(chatId: widget.contactId, text: encryptedText, isMe: true, time: time);
-    _p2pService.sendMessage(recipientId: widget.contactId, encryptedText: encryptedText, chatId: widget.contactId);
-    _messageController.clear(); _scrollDown();
-    if (_sharedKey != null) { Future.delayed(const Duration(milliseconds: 1200), () { if (!mounted) return; setState(() { message['isEncrypted'] = false; message['animating'] = false; }); }); }
-    if (_selfDestruct > 0) { Future.delayed(Duration(seconds: _selfDestruct), () { if (!mounted) return; final idx = _messages.indexOf(message); if (idx >= 0) { setState(() => _messages.removeAt(idx)); _chatService.deleteMessage(widget.contactId, idx); } }); }
-  }
-
-  void _toggleMediaPanel() {
-    if (_showMediaPanel) { _mediaController.reverse(); } else { _mediaController.forward(); }
-    setState(() => _showMediaPanel = !_showMediaPanel);
-  }
-
-  void _sendVideoMessage() async {
-    final video = await _imagePicker.pickVideo(source: ImageSource.camera, maxDuration: const Duration(seconds: 30));
-    if (video == null) return;
-    final bytes = await video.readAsBytes(); final name = video.name;
-    final now = TimeOfDay.now(); final time = '${now.hour}:${now.minute.toString().padLeft(2, '0')}';
-    await _fileService.saveFile(chatId: widget.contactId, fileName: name, bytes: Uint8List.fromList(bytes), isMe: true, time: time, key: _sharedKey);
+  void _showSnackBar(String message) {
     if (!mounted) return;
-    setState(() => _messages.add({'type': 'video_msg', 'fileName': name, 'text': '🎬 Видеосообщение', 'isMe': true, 'time': time}));
-    _scrollDown();
-  }
-
-  void _showStickerPicker() {
-    showModalBottomSheet(context: context, backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => Padding(padding: const EdgeInsets.all(16), child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('Стикеры', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 12),
-        Wrap(spacing: 12, runSpacing: 12, children: _stickers.map((s) => GestureDetector(onTap: () { _messageController.text = s; _sendMessage(); Navigator.pop(ctx); },
-          child: Container(width: 56, height: 56, decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary.withOpacity(0.05), borderRadius: BorderRadius.circular(14)), child: Center(child: Text(s, style: const TextStyle(fontSize: 28)))),)).toList()),
-        const SizedBox(height: 16),
-      ])),
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.orange),
     );
   }
 
-  void _sendVideo() async {
-    final video = await _imagePicker.pickVideo(source: ImageSource.gallery, maxDuration: const Duration(seconds: 60));
-    if (video == null) return;
-    final bytes = await video.readAsBytes(); final name = video.name;
-    final now = TimeOfDay.now(); final time = '${now.hour}:${now.minute.toString().padLeft(2, '0')}';
-    await _fileService.saveFile(chatId: widget.contactId, fileName: name, bytes: Uint8List.fromList(bytes), isMe: true, time: time, key: _sharedKey);
-    if (!mounted) return;
-    setState(() => _messages.add({'type': 'video', 'fileName': name, 'text': '🎬 Видео', 'isMe': true, 'time': time}));
-    _scrollDown();
+  Future<void> _loadChatInfo() async {
+    final username = await _getUsername(widget.contactId);
+    final name = await _getContactName(widget.contactId);
+    setState(() {
+      if (username != null && username.isNotEmpty) {
+        _chatTitle = '@$username';
+        _chatStatus = 'Юзернейм';
+      } else {
+        _chatTitle = name ?? 'Неизвестный';
+        _chatStatus = _contacts[widget.contactId]?['status'] ?? 'Офлайн';
+      }
+      _isLoadingChatInfo = false;
+    });
   }
 
-  void _setSelfDestruct() {
-    showDialog(context: context, builder: (ctx) => AlertDialog(
-      backgroundColor: Theme.of(context).colorScheme.surface, title: Text('Самоуничтожение', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        _buildTimerOption(0, 'Выкл'), _buildTimerOption(5, '5 секунд'), _buildTimerOption(30, '30 секунд'), _buildTimerOption(60, '1 минута'), _buildTimerOption(300, '5 минут'),
-      ]), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Закрыть'))],
-    ));
+  Future<String?> _getUsername(String publicKey) async {
+    try {
+      final response = await http.get(
+        Uri.parse('${VeilConstants.serverUrl}/username/get?ownerId=$publicKey'),
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['username'] as String?;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<String?> _getContactName(String publicKey) async {
+    try {
+      final contactsBox = Hive.box('contacts');
+      final data = contactsBox.get(publicKey);
+      if (data is Map) {
+        return data['name']?.toString();
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  @override
+  void dispose() {
+    _chat.dispose();
+    super.dispose();
+  }
+
+  void _toggleSearch() => _chat.toggleSearch();
+  void _filterMessages(String query) => _chat.filterMessages(query);
+
+  void _showEditDialog(int index) {
+    final msg = _chat.filteredMessages[index];
+    final controller = TextEditingController(text: msg['text'] as String);
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Редактировать сообщение'),
+        content: TextField(
+          controller: controller,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            hintText: 'Новый текст',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () {
+              final newText = controller.text.trim();
+              if (newText.isNotEmpty) {
+                _chat.editMessage(index, newText);
+                Navigator.pop(ctx);
+              }
+            },
+            child: const Text('Сохранить', style: TextStyle(color: Color(0xFF6C5CE7))),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showForwardDialog(int index) {
+    final contacts = Hive.box('contacts');
+    final List<Map<String, dynamic>> chatList = [];
+
+    for (final key in contacts.keys) {
+      final data = contacts.get(key);
+      if (data is Map) {
+        chatList.add({
+          'id': key.toString(),
+          'name': data['name']?.toString() ?? 'Контакт',
+          'type': 'contact',
+        });
+      }
+    }
+
+    final groupsBox = Hive.box('messages');
+    final rawGroups = groupsBox.get('groups_list');
+    if (rawGroups is List) {
+      for (final item in rawGroups) {
+        if (item is Map) {
+          chatList.add({
+            'id': item['id']?.toString() ?? '',
+            'name': item['name']?.toString() ?? 'Группа',
+            'type': 'group',
+          });
+        }
+      }
+    }
+
+    if (chatList.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Нет чатов для пересылки'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Переслать в чат'),
+        content: SizedBox(
+          width: 300,
+          height: 300,
+          child: ListView.builder(
+            itemCount: chatList.length,
+            itemBuilder: (context, i) {
+              final chat = chatList[i];
+              return ListTile(
+                leading: CircleAvatar(
+                  radius: 16,
+                  backgroundColor: chat['type'] == 'group'
+                      ? const Color(0xFF6C5CE7)
+                      : const Color(0xFF10B981),
+                  child: Text(
+                    chat['name'][0].toUpperCase(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                title: Text(chat['name']),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _chat.forwardMessage(index, chat['id']);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Сообщение переслано в "${chat['name']}"'),
+                      backgroundColor: const Color(0xFF6C5CE7),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Отмена'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _testTyping() {
+  // Включаем индикатор печати
+  _chat.setTyping(true);
+
+  // Через 3 секунды выключаем
+  Future.delayed(const Duration(seconds: 3), () {
+    if (mounted) {
+      _chat.setTyping(false);
+    }
+  });
+}
+
+  void _showContextMenu(int index) {
+    final msg = _chat.filteredMessages[index];
+    final isPinned = msg['isPinned'] as bool? ?? false;
+    final isMe = msg['isMe'] as bool? ?? false;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isMe)
+              ListTile(
+                leading: const Icon(Icons.edit_outlined),
+                title: const Text('Редактировать'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showEditDialog(index);
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.forward_outlined),
+              title: const Text('Переслать'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showForwardDialog(index);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.reply),
+              title: const Text('Ответить'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _chat.replyToMessage(index);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.emoji_emotions_outlined),
+              title: const Text('Реакции'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showReactionPicker(index);
+              },
+            ),
+            ListTile(
+              leading: Icon(
+                isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+              ),
+              title: Text(isPinned ? 'Открепить' : 'Закрепить'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _chat.togglePin(index);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.red),
+              title: const Text('Удалить', style: TextStyle(color: Colors.red)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _chat.deleteMessage(index);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showVoiceRecorder(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: VoiceRecorder(
+          onSend: (file, duration) {
+            _chat.sendVoiceMessage(file, duration);
+          },
+        ),
+      ),
+    );
+  }
+
+  void _showReactionPicker(int index) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Выберите реакцию',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: _chat.reactionEmojis.map((emoji) {
+                return GestureDetector(
+                  onTap: () {
+                    _chat.toggleReaction(index, emoji);
+                    Navigator.pop(ctx);
+                  },
+                  child: Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Center(
+                      child: Text(emoji, style: const TextStyle(fontSize: 24)),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _exportChat() async {
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Экспорт чата'),
+        content: const Text('Выберите формат:'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'txt'),
+            child: const Text('TXT'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'json'),
+            child: const Text('JSON'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, null),
+            child: const Text('Отмена'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == null) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Экспорт чата (в разработке)'),
+        backgroundColor: Colors.orange,
+      ),
+    );
+  }
+
+  void _showDeleteDialog(int index) {
+    final msg = _chat.filteredMessages[index];
+    final isPinned = msg['isPinned'] as bool? ?? false;
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        title: const Text('Удалить сообщение?'),
+        content: Text(
+          isPinned 
+            ? 'Это сообщение закреплено. Удалить его?'
+            : 'Это действие нельзя отменить.',
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () {
+              _chat.deleteMessage(index);
+              Navigator.pop(ctx);
+            },
+            child: const Text('Удалить', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _toggleEmoji() {
+    setState(() {
+      _showEmoji = !_showEmoji;
+      if (_showEmoji) FocusScope.of(context).unfocus();
+    });
+  }
+
+  void _showStickerPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Стикеры',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: _chat.stickers.map((s) {
+                return GestureDetector(
+                  onTap: () {
+                    _chat.messageController.text = s;
+                    _chat.sendMessage();
+                    Navigator.pop(ctx);
+                  },
+                  child: Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Center(
+                      child: Text(s, style: const TextStyle(fontSize: 28)),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showSelfDestructDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        title: const Text('Самоуничтожение'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildTimerOption(0, 'Выкл'),
+            _buildTimerOption(5, '5 секунд'),
+            _buildTimerOption(30, '30 секунд'),
+            _buildTimerOption(60, '1 минута'),
+            _buildTimerOption(300, '5 минут'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Закрыть'),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildTimerOption(int seconds, String label) {
     return ListTile(
-      title: Text(label, style: TextStyle(color: _selfDestruct == seconds ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurface)),
-      leading: Icon(_selfDestruct == seconds ? Icons.timer : Icons.timer_outlined, color: _selfDestruct == seconds ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurface),
-      onTap: () { setState(() => _selfDestruct = seconds); Navigator.pop(context); },
+      title: Text(
+        label,
+        style: TextStyle(
+          color: _chat.selfDestruct == seconds
+              ? Theme.of(context).colorScheme.primary
+              : Theme.of(context).colorScheme.onSurface,
+        ),
+      ),
+      leading: Icon(
+        _chat.selfDestruct == seconds ? Icons.timer : Icons.timer_outlined,
+        color: _chat.selfDestruct == seconds
+            ? Theme.of(context).colorScheme.primary
+            : Theme.of(context).colorScheme.onSurface,
+      ),
+      onTap: () {
+        _chat.setSelfDestruct(seconds);
+        Navigator.pop(context);
+      },
     );
   }
 
-  void _sendFile() async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.any, withData: true);
-    if (result == null || result.files.isEmpty) return;
-    final file = result.files.first; if (file.bytes == null) return;
-    final now = TimeOfDay.now(); final time = '${now.hour}:${now.minute.toString().padLeft(2, '0')}';
-    await _fileService.saveFile(chatId: widget.contactId, fileName: file.name, bytes: Uint8List.fromList(file.bytes!), isMe: true, time: time, key: _sharedKey);
-    if (!mounted) return;
-    setState(() => _messages.add({'type': 'file', 'fileName': file.name, 'text': '📎 ${file.name}', 'isMe': true, 'time': time})); _scrollDown();
-  }
+  void _showPluginsMenu() {
+    final manager = PluginManager();
+    final installed = manager.getInstalledPlugins();
+    
+    if (installed.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Нет установленных плагинов'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
 
-  void _sendPhoto() async {
-    final photo = await _imagePicker.pickImage(source: ImageSource.camera, maxWidth: 1024, maxHeight: 1024, imageQuality: 80);
-    if (photo == null) return;
-    final bytes = await photo.readAsBytes(); final now = TimeOfDay.now(); final time = '${now.hour}:${now.minute.toString().padLeft(2, '0')}';
-    await _fileService.saveFile(chatId: widget.contactId, fileName: photo.name, bytes: Uint8List.fromList(bytes), isMe: true, time: time, key: _sharedKey);
-    if (!mounted) return;
-    setState(() => _messages.add({'type': 'photo', 'fileName': photo.name, 'text': '📷 Фото', 'isMe': true, 'time': time})); _scrollDown();
-  }
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Плагины',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            ...installed.map((id) {
+              String name = id;
+              String icon = '🧩';
+              
+              switch (id) {
+                case 'veil.translator':
+                  name = 'Veil Translator';
+                  icon = '🌐';
+                  break;
+                case 'veil.reminder':
+                  name = 'Veil Reminder';
+                  icon = '⏰';
+                  break;
+                case 'veil.stats':
+                  name = 'Veil Stats';
+                  icon = '📊';
+                  break;
+                case 'veil.scheduler':
+                  name = 'Veil Scheduler';
+                  icon = '📅';
+                  break;
+                case 'veil.safe_backup':
+                  name = 'Veil Safe Backup';
+                  icon = '💾';
+                  break;
+                default:
+                  name = id;
+              }
 
-  void _startRecording() async { if (await _audioRecorder.hasPermission()) { await _audioRecorder.start(const RecordConfig(), path: ''); setState(() => _isRecording = true); } }
-  void _stopRecording() async {
-    if (!_isRecording) return; final path = await _audioRecorder.stop(); setState(() => _isRecording = false);
-    if (path == null) return; final file = File(path); final bytes = await file.readAsBytes();
-    final name = 'Голосовое ${DateTime.now().hour}:${DateTime.now().minute}'; final now = TimeOfDay.now(); final time = '${now.hour}:${now.minute.toString().padLeft(2, '0')}';
-    await _fileService.saveFile(chatId: widget.contactId, fileName: '$name.m4a', bytes: Uint8List.fromList(bytes), isMe: true, time: time, key: _sharedKey);
-    if (!mounted) return;
-    setState(() => _messages.add({'type': 'voice', 'fileName': name, 'text': '🎤 $name', 'isMe': true, 'time': time})); _scrollDown();
+              return ListTile(
+                leading: Text(icon, style: const TextStyle(fontSize: 24)),
+                title: Text(name),
+                subtitle: const Text('Активен'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Выбран плагин: $name'),
+                      backgroundColor: const Color(0xFF6C5CE7),
+                    ),
+                  );
+                },
+              );
+            }),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
   }
-
-  void _onEmojiSelected(Category? category, Emoji emoji) { _messageController.text += emoji.emoji; _messageController.selection = TextSelection.fromPosition(TextPosition(offset: _messageController.text.length)); }
-  void _showDeleteDialog(int index) {
-    showDialog(context: context, builder: (ctx) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), backgroundColor: Theme.of(context).colorScheme.surface,
-      title: Text('Удалить сообщение?', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
-      content: Text('Это действие нельзя отменить.', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
-      actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена')), TextButton(onPressed: () { setState(() => _messages.removeAt(index)); _chatService.deleteMessage(widget.contactId, index); Navigator.pop(ctx); }, child: const Text('Удалить', style: TextStyle(color: Color(0xFFEF4444))))],
-    ));
-  }
-  void _replyToMessage(int index) => setState(() => _replyTo = _messages[index]);
-  void _scrollDown() { Future.delayed(const Duration(milliseconds: 100), () { if (_scrollController.hasClients) _scrollController.animateTo(_scrollController.position.maxScrollExtent, duration: const Duration(milliseconds: 300), curve: Curves.easeOut); }); }
-  @override
-  void dispose() { _messageController.dispose(); _scrollController.dispose(); _mediaController.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final contact = _contacts[widget.contactId] ?? {'name': 'Неизвестный', 'initial': '?', 'status': 'Офлайн'};
+    final wallpaperDecoration = _chat.getWallpaperDecoration();
+    final contact = _contacts[widget.contactId] ?? {
+      'name': 'Неизвестный',
+      'initial': '?',
+      'status': 'Офлайн'
+    };
+
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(backgroundColor: theme.scaffoldBackgroundColor,
-        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => GoRouter.of(context).go('/chats')),
-        title: Row(children: [
-          CircleAvatar(radius: 18, backgroundColor: theme.colorScheme.primary.withOpacity(0.1), child: Text(contact['initial'] ?? '?', style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 14))),
-          const SizedBox(width: 8), Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(contact['name'] ?? '', style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600)),
-            Text(contact['status'] ?? '', style: theme.textTheme.bodyMedium?.copyWith(color: contact['status'] == 'В сети' ? theme.colorScheme.primary : theme.colorScheme.onSurface.withOpacity(0.5), fontSize: 12)),
-          ]),
-        ]),
-        actions: [
-          IconButton(icon: const Icon(Icons.call, color: Color(0xFF10B981)), onPressed: () => context.go('/call/${widget.contactId}', extra: {'name': contact['name'], 'isVideo': false})),
-          IconButton(icon: const Icon(Icons.videocam, color: Color(0xFF10B981)), onPressed: () => context.go('/call/${widget.contactId}', extra: {'name': contact['name'], 'isVideo': true})),
-          IconButton(icon: const Icon(Icons.report_outlined, color: Colors.red), onPressed: () => context.go('/report/${widget.contactId}')),
-        ],
-      ),
-      body: Column(children: [
-        Expanded(child: ListView.builder(controller: _scrollController, padding: const EdgeInsets.all(16), itemCount: _messages.length, itemBuilder: (context, index) {
-          final msg = _messages[index]; final isMe = msg['isMe'] as bool;
-          final isFile = msg['type'] == 'file'; final isPhoto = msg['type'] == 'photo'; final isVoice = msg['type'] == 'voice';
-          final isVideo = msg['type'] == 'video'; final isVideoMsg = msg['type'] == 'video_msg';
-          final isAnimating = msg['animating'] as bool? ?? false; final replyTo = msg['replyTo'] as Map<String, dynamic>?;
-          return TweenAnimationBuilder<double>(tween: Tween(begin: 0.0, end: 1.0), duration: const Duration(milliseconds: 300), curve: Curves.easeOut,
-            builder: (context, value, child) => Opacity(opacity: value, child: Transform.translate(offset: Offset(0, 20 * (1 - value)), child: child)),
-            child: GestureDetector(onLongPress: () => _showDeleteDialog(index), onSecondaryTap: () => _showDeleteDialog(index),
-              child: Dismissible(key: Key('msg_$index'), direction: DismissDirection.startToEnd, confirmDismiss: (_) async { _replyToMessage(index); return false; },
-                background: Container(alignment: Alignment.centerLeft, padding: const EdgeInsets.only(left: 20), color: theme.colorScheme.primary.withOpacity(0.05), child: Icon(Icons.reply, color: theme.colorScheme.primary)),
-                child: Align(alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                  child: Container(margin: const EdgeInsets.only(bottom: 12), constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75), padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: isMe ? theme.colorScheme.primary : theme.colorScheme.surface, borderRadius: BorderRadius.only(topLeft: const Radius.circular(16), topRight: const Radius.circular(16), bottomLeft: Radius.circular(isMe ? 16 : 4), bottomRight: Radius.circular(isMe ? 4 : 16))),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      if (replyTo != null) Container(margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: isMe ? Colors.white.withOpacity(0.2) : Colors.black.withOpacity(0.05), borderRadius: BorderRadius.circular(8), border: Border(left: BorderSide(color: isMe ? Colors.white : theme.colorScheme.primary, width: 3))), child: Text(replyTo['text'] ?? '', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: isMe ? Colors.white.withOpacity(0.7) : Colors.grey[600], fontStyle: FontStyle.italic))),
-                      if (isVoice) Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.mic, size: 20, color: isMe ? Colors.white : theme.colorScheme.primary), const SizedBox(width: 8), Flexible(child: Text('🎤 Голосовое', style: TextStyle(color: isMe ? Colors.white : theme.colorScheme.onSurface, fontSize: 14, decoration: TextDecoration.underline)))])
-                      else if (isVideoMsg) Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.videocam, size: 20, color: isMe ? Colors.white : theme.colorScheme.primary), const SizedBox(width: 8), Flexible(child: Text('🎬 Видеосообщение', style: TextStyle(color: isMe ? Colors.white : theme.colorScheme.onSurface, fontSize: 14, decoration: TextDecoration.underline)))])
-                      else if (isVideo) Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.video_library, size: 20, color: isMe ? Colors.white : theme.colorScheme.primary), const SizedBox(width: 8), Flexible(child: Text('🎬 Видео', style: TextStyle(color: isMe ? Colors.white : theme.colorScheme.onSurface, fontSize: 14, decoration: TextDecoration.underline)))])
-                      else if (isPhoto) Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.image, size: 20, color: isMe ? Colors.white : theme.colorScheme.primary), const SizedBox(width: 8), Flexible(child: Text('📷 Фото', style: TextStyle(color: isMe ? Colors.white : theme.colorScheme.onSurface, fontSize: 14, decoration: TextDecoration.underline)))])
-                      else if (isFile) Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.insert_drive_file, size: 20, color: isMe ? Colors.white : theme.colorScheme.primary), const SizedBox(width: 8), Flexible(child: Text(msg['fileName'] ?? 'Файл', style: TextStyle(color: isMe ? Colors.white : theme.colorScheme.onSurface, fontSize: 14, decoration: TextDecoration.underline)))])
-                      else if (isAnimating) EncryptAnimation(text: msg['text'] as String, isEncrypting: true, textColor: isMe ? Colors.white : theme.colorScheme.onSurface, fontSize: 16)
-                      else Text(msg['text'] as String, style: TextStyle(color: isMe ? Colors.white : theme.colorScheme.onSurface, fontSize: 16)),
-                      const SizedBox(height: 4), Align(alignment: Alignment.bottomRight, child: Text(msg['time'] as String, style: TextStyle(fontSize: 11, color: isMe ? Colors.white.withOpacity(0.7) : theme.colorScheme.onSurface.withOpacity(0.5)))),
-                    ]),
-                  ),
-                ),
+      appBar: AppBar(
+  backgroundColor: Colors.transparent,
+  elevation: 0,
+  leading: IconButton(
+    icon: _chat.isSearching ? const Icon(Icons.close) : const Icon(Icons.arrow_back),
+    onPressed: () {
+      if (_chat.isSearching) {
+        _chat.toggleSearch();
+      } else {
+        GoRouter.of(context).go('/chats');
+      }
+    },
+  ),
+  title: _isLoadingChatInfo
+      ? const SizedBox(
+          width: 120,
+          height: 20,
+          child: LinearProgressIndicator(),
+        )
+      : Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _chatTitle,
+              style: theme.textTheme.bodyLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+                fontSize: 16,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+            Text(
+              _chatStatus,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: _chatStatus == 'В сети' || _chatStatus == 'Юзернейм'
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurface.withOpacity(0.5),
+                fontSize: 11,
               ),
             ),
-          );
-        })),
-        if (_replyTo != null) Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), color: theme.colorScheme.primary.withOpacity(0.05), child: Row(children: [
-          Icon(Icons.reply, color: theme.colorScheme.primary, size: 20), const SizedBox(width: 8),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Ответ на сообщение', style: TextStyle(fontSize: 11, color: theme.colorScheme.primary, fontWeight: FontWeight.w600)), Text(_replyTo!['text'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.5)))])),
-          IconButton(icon: Icon(Icons.close, size: 18, color: theme.colorScheme.onSurface.withOpacity(0.5)), onPressed: () => setState(() => _replyTo = null)),
-        ])),
-        Container(decoration: BoxDecoration(color: theme.colorScheme.surface, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -2))]),
-          child: SafeArea(child: Column(children: [
-            Row(children: [
-              IconButton(icon: Icon(_selfDestruct > 0 ? Icons.timer : Icons.timer_outlined, color: _selfDestruct > 0 ? theme.colorScheme.primary : theme.colorScheme.onSurface.withOpacity(0.5)), onPressed: _setSelfDestruct),
-              IconButton(icon: const Icon(Icons.video_library, color: Color(0xFF10B981)), onPressed: _sendVideo),
-              IconButton(icon: Icon(Icons.camera_alt, color: theme.colorScheme.primary), onPressed: _sendPhoto),
-              IconButton(icon: Icon(Icons.attach_file, color: theme.colorScheme.primary), onPressed: _sendFile),
-              IconButton(icon: Icon(Icons.face, color: theme.colorScheme.primary), onPressed: _showStickerPicker),
-              IconButton(icon: Icon(_showEmoji ? Icons.keyboard : Icons.emoji_emotions_outlined, color: theme.colorScheme.primary), onPressed: () { setState(() => _showEmoji = !_showEmoji); if (_showEmoji) FocusScope.of(context).unfocus(); }),
-              Expanded(child: TextField(controller: _messageController, style: TextStyle(color: theme.colorScheme.onSurface), decoration: const InputDecoration(hintText: 'Сообщение...', border: InputBorder.none, contentPadding: EdgeInsets.symmetric(horizontal: 8)), maxLines: 5, minLines: 1, onChanged: _onTextFieldChanged)),
-              const SizedBox(width: 4),
-              _isRecording
-                  ? Container(decoration: BoxDecoration(color: Color(0xFFEF4444), shape: BoxShape.circle), child: Material(color: Colors.transparent, child: InkWell(customBorder: const CircleBorder(), onTap: _stopRecording, child: const Padding(padding: EdgeInsets.all(12), child: Icon(Icons.stop, color: Colors.white, size: 20)))))
-                  : Row(mainAxisSize: MainAxisSize.min, children: [
-                      AnimatedContainer(duration: const Duration(milliseconds: 300), width: _showMediaPanel ? 120 : 0,
-                        child: _showMediaPanel
-                            ? ScaleTransition(scale: _mediaAnimation, child: Row(mainAxisSize: MainAxisSize.min, children: [
-                                Container(decoration: BoxDecoration(color: theme.colorScheme.primary.withOpacity(0.1), shape: BoxShape.circle), child: IconButton(icon: Icon(Icons.mic, color: theme.colorScheme.primary), onPressed: () { _toggleMediaPanel(); _startRecording(); })),
-                                const SizedBox(width: 4),
-                                Container(decoration: BoxDecoration(color: theme.colorScheme.primary.withOpacity(0.1), shape: BoxShape.circle), child: IconButton(icon: Icon(Icons.videocam, color: theme.colorScheme.primary), onPressed: () { _toggleMediaPanel(); _sendVideoMessage(); })),
-                              ]))
-                            : const SizedBox(),
-                      ),
-                      IconButton(icon: Icon(_showMediaPanel ? Icons.close : Icons.mic, color: theme.colorScheme.primary), onPressed: _toggleMediaPanel),
-                      Container(decoration: BoxDecoration(color: theme.colorScheme.primary, shape: BoxShape.circle), child: Material(color: Colors.transparent, child: InkWell(customBorder: const CircleBorder(), onTap: _sendMessage, child: Padding(padding: EdgeInsets.all(12), child: Icon(Icons.send, color: theme.colorScheme.onPrimary, size: 20))))),
-                    ]),
-              const SizedBox(width: 4),
-            ]),
-            if (_showEmoji) SizedBox(height: 300, child: EmojiPicker(onEmojiSelected: _onEmojiSelected)),
-          ])),
+          ],
         ),
-      ]),
+  actions: [
+    // 👇 ТЕСТОВАЯ КНОПКА
+    IconButton(
+      icon: const Icon(Icons.text_fields, color: Color(0xFF6C5CE7)),
+      onPressed: _testTyping,
+      tooltip: 'Тест печати',
+    ),
+    if (!_chat.isSearching) ...[
+      IconButton(
+        icon: const Icon(Icons.search),
+        onPressed: _chat.toggleSearch,
+        tooltip: 'Поиск',
+      ),
+      IconButton(
+        icon: const Icon(Icons.wallpaper_outlined),
+        onPressed: () => context.go(
+          '/wallpaper/${widget.contactId}',
+          extra: {'name': contact['name']},
+        ),
+        tooltip: 'Обои',
+      ),
+      IconButton(
+        icon: const Icon(Icons.call, color: Color(0xFF10B981)),
+        onPressed: () => context.go(
+          '/call/${widget.contactId}',
+          extra: {'name': contact['name'], 'isVideo': false},
+        ),
+      ),
+      IconButton(
+        icon: const Icon(Icons.videocam, color: Color(0xFF10B981)),
+        onPressed: () => context.go(
+          '/call/${widget.contactId}',
+          extra: {'name': contact['name'], 'isVideo': true},
+        ),
+      ),
+      IconButton(
+        icon: const Icon(Icons.report_outlined, color: Colors.red),
+        onPressed: () => context.go('/report/${widget.contactId}'),
+      ),
+    ],
+  ],
+),
+      body: AnimatedWallpaper(
+        colors: const [
+          Color(0xFFFF9A9E),
+          Color(0xFFFAD0C4),
+        ],
+        child: Container(
+          decoration: wallpaperDecoration ?? BoxDecoration(
+            color: theme.scaffoldBackgroundColor,
+          ),
+          child: AnimatedBuilder(
+            animation: _chat,
+            builder: (context, child) {
+              final pinned = _chat.chatService.getPinnedMessage(widget.contactId);
+              
+              return Column(
+                children: [
+                  // Индикатор печати
+                  TypingIndicator(
+                    isTyping: _chat.isTyping,
+                    username: _chatTitle,
+                    color: const Color(0xFF6C5CE7),
+                  ),
+                  if (pinned != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.3),
+                        border: Border(
+                          bottom: BorderSide(
+                            color: theme.colorScheme.primary.withOpacity(0.2),
+                          ),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.push_pin, color: theme.colorScheme.primary, size: 18),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Закреплено',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: theme.colorScheme.primary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                Text(
+                                  pinned['text'] ?? '',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: theme.colorScheme.onSurface,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.close, size: 18, color: theme.colorScheme.onSurface.withOpacity(0.5)),
+                            onPressed: () {
+                              final messages = _chat.chatService.loadMessages(widget.contactId);
+                              for (int i = 0; i < messages.length; i++) {
+                                if (messages[i]['isPinned'] == true) {
+                                  _chat.chatService.togglePin(widget.contactId, i);
+                                  _chat.loadMessages();
+                                  break;
+                                }
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  Expanded(
+  child: ListView.builder(
+    controller: _chat.scrollController,
+    padding: const EdgeInsets.all(16),
+    reverse: false, // 👈 НЕ ПЕРЕВОРАЧИВАЕМ!
+    itemCount: _chat.filteredMessages.length,
+    itemBuilder: (context, index) {
+      final msg = _chat.filteredMessages[index];
+      final isMe = msg['isMe'] as bool;
+      final isAnimating = msg['animating'] as bool? ?? false;
+      final replyTo = msg['replyTo'] as Map<String, dynamic>?;
+      final isPinned = msg['isPinned'] as bool? ?? false;
+
+      return TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.0, end: 1.0),
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+        builder: (context, value, child) => Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, 20 * (1 - value)),
+            child: child,
+          ),
+        ),
+        child: GestureDetector(
+          onLongPress: () => _showContextMenu(index),
+          child: Dismissible(
+            key: Key('msg_$index'),
+            direction: DismissDirection.startToEnd,
+            confirmDismiss: (_) async {
+              _chat.replyToMessage(index);
+              return false;
+            },
+            background: Container(
+              alignment: Alignment.centerLeft,
+              padding: const EdgeInsets.only(left: 20),
+              color: theme.colorScheme.primary.withOpacity(0.05),
+              child: Icon(Icons.reply, color: theme.colorScheme.primary),
+            ),
+            child: ChatMessageBubble(
+              message: msg,
+              isMe: isMe,
+              isAnimating: isAnimating,
+              currentUserId: _chat.currentUserId,
+              onLongPress: () => _showDeleteDialog(index),
+              onReply: () => _chat.replyToMessage(index),
+              senderUsername: msg['senderUsername'] as String?,
+            ),
+          ),
+        ),
+      );
+    },
+  ),
+),
+                  if (_chat.replyTo != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      color: Colors.black.withOpacity(0.3),
+                      child: Row(
+                        children: [
+                          Icon(Icons.reply, color: theme.colorScheme.primary, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Ответ на сообщение',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: theme.colorScheme.primary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                Text(
+                                  _chat.replyTo!['text'] ?? '',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: theme.colorScheme.onSurface.withOpacity(0.5),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.close, size: 18, color: theme.colorScheme.onSurface.withOpacity(0.5)),
+                            onPressed: _chat.clearReply,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ChatInput(
+                    controller: _chat.messageController,
+                    onSend: _chat.sendMessage,
+                    onEmojiToggle: _toggleEmoji,
+                    onStickerPicker: _showStickerPicker,
+                    onPhoto: _chat.sendPhoto,
+                    onVideo: _chat.sendVideo,
+                    onFile: _chat.sendFile,
+                    onSelfDestruct: _showSelfDestructDialog,
+                    onVoice: () => _showVoiceRecorder(context),
+                    onPlugins: _showPluginsMenu,
+                    showEmoji: _showEmoji,
+                    selfDestruct: _chat.selfDestruct,
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
     );
   }
 }

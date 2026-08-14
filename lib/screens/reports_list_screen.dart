@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import '../l10n/app_localizations.dart';
+import '../services/admin_service.dart';
 
 class ReportsListScreen extends ConsumerStatefulWidget {
   const ReportsListScreen({super.key});
@@ -16,10 +18,27 @@ class ReportsListScreen extends ConsumerStatefulWidget {
 class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
   List<Map<String, dynamic>> _reports = [];
   List<String> _blockedKeys = [];
+  bool _isAdmin = false;
 
   @override
   void initState() {
     super.initState();
+    _checkAdmin();
+  }
+
+  Future<void> _checkAdmin() async {
+    final adminService = AdminService();
+    final isAdmin = await adminService.isAdmin();
+    if (!isAdmin) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Доступ запрещён'), backgroundColor: Colors.red),
+        );
+        context.go('/chats');
+      }
+      return;
+    }
+    setState(() => _isAdmin = true);
     _loadBlockedKeys();
     _loadReports();
   }
@@ -88,8 +107,15 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final stats = _getStats();
+
+    if (!_isAdmin) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(

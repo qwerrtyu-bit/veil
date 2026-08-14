@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import '../l10n/app_localizations.dart';
 
 class StoriesScreen extends ConsumerStatefulWidget {
   const StoriesScreen({super.key});
@@ -28,7 +29,6 @@ class _StoriesScreenState extends ConsumerState<StoriesScreen> {
     final raw = box.get('stories', defaultValue: <Map<String, dynamic>>[]);
     if (raw is List) {
       _stories = raw.where((item) => item is Map).map((item) => Map<String, dynamic>.from(item as Map)).toList();
-      // Удаляем просроченные (старше 24 часов)
       final now = DateTime.now();
       _stories.removeWhere((s) {
         final timestamp = DateTime.tryParse(s['timestamp'] as String? ?? '');
@@ -81,18 +81,22 @@ class _StoriesScreenState extends ConsumerState<StoriesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0F),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0A0A0F),
-        title: const Text('Статусы'),
+        backgroundColor: theme.scaffoldBackgroundColor,
+        title: Text(l10n.stories),
         leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go('/chats')),
         actions: [
           IconButton(icon: const Icon(Icons.add_a_photo), onPressed: _addStory),
         ],
       ),
       body: _stories.isEmpty
-          ? const Center(child: Text('Нет статусов', style: TextStyle(color: Color(0xFF888899), fontSize: 16)))
+          ? Center(
+              child: Text('Нет статусов', style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5), fontSize: 16)),
+            )
           : GridView.builder(
               padding: const EdgeInsets.all(16),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -129,7 +133,7 @@ class _StoriesScreenState extends ConsumerState<StoriesScreen> {
                         ),
                       ),
                       child: Text(
-                        '${hoursLeft}ч',
+                        '${hoursLeft} ч',
                         style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
                       ),
                     ),

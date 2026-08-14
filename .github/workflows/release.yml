@@ -1,0 +1,51 @@
+name: 📦 Create Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  create_release:
+    name: 🚀 Create Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: 'stable'
+
+      - name: Enable Windows
+        run: flutter config --enable-windows-desktop
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build Windows
+        run: flutter build windows --release
+
+      - name: Build Web
+        run: flutter build web --release
+
+      - name: Build Android
+        run: flutter build apk --release
+
+      - name: Zip Windows
+        run: Compress-Archive -Path build/windows/runner/Release/* -DestinationPath veil-windows.zip
+
+      - name: Zip Web
+        run: Compress-Archive -Path build/web/* -DestinationPath veil-web.zip
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            veil-windows.zip
+            veil-web.zip
+            build/app/outputs/flutter-apk/app-release.apk
+          generate_release_notes: true

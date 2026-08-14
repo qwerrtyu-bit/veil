@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/plugin_scanner.dart';
+import '../l10n/app_localizations.dart';
+import 'package:go_router/go_router.dart';
+
 
 class PluginDetailScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic> plugin;
@@ -14,14 +17,12 @@ class PluginDetailScreen extends ConsumerStatefulWidget {
 class _PluginDetailScreenState extends ConsumerState<PluginDetailScreen> {
   final _scanner = PluginScanner();
   PluginScanResult? _scanResult;
+  Color _riskColor = const Color(0xFF10B981);
 
-    Color _riskColor = const Color(0xFF10B981);
-
-    void _runScan() {
+  void _runScan() {
     final demoCode = widget.plugin['description'] as String;
     final result = _scanner.scan(demoCode);
 
-    // Цвета по уровню риска
     Color riskColor;
     switch (result.riskLevel) {
       case 'critical':
@@ -51,9 +52,14 @@ class _PluginDetailScreenState extends ConsumerState<PluginDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0F),
       appBar: AppBar(
+        leading: IconButton(
+  icon: const Icon(Icons.arrow_back),
+  onPressed: () => context.go('/plugins'),
+),
         backgroundColor: const Color(0xFF0A0A0F),
         title: Text(widget.plugin['name'] as String),
       ),

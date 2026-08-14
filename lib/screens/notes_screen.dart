@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../data/crypto_service.dart';
+import '../l10n/app_localizations.dart';
 
 class NotesScreen extends ConsumerStatefulWidget {
   const NotesScreen({super.key});
@@ -68,11 +69,11 @@ class _NotesScreenState extends ConsumerState<NotesScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A26),
-        title: Text(note['title'] as String, style: const TextStyle(color: Color(0xFFE0E0E0))),
-        content: Text(decrypted, style: const TextStyle(color: Color(0xFFE0E0E0))),
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        title: Text(note['title'] as String, style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
+        content: Text(decrypted, style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Закрыть')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Закрыть', style: TextStyle(color: Theme.of(context).colorScheme.onSurface))),
         ],
       ),
     );
@@ -86,36 +87,37 @@ class _NotesScreenState extends ConsumerState<NotesScreen> {
   void _showAddDialog() {
     _titleController.clear();
     _contentController.clear();
+    final theme = Theme.of(context);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A26),
-        title: const Text('Новая .veilnote', style: TextStyle(color: Color(0xFFE0E0E0))),
+        backgroundColor: theme.colorScheme.surface,
+        title: const Text('Новая .veilnote', style: TextStyle(color: Color(0xFF4ADE80))),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: _titleController,
-              style: const TextStyle(color: Color(0xFFE0E0E0)),
-              decoration: const InputDecoration(
+              style: TextStyle(color: theme.colorScheme.onSurface),
+              decoration: InputDecoration(
                 hintText: 'Заголовок',
-                hintStyle: TextStyle(color: Color(0xFF888899)),
+                hintStyle: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5)),
               ),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _contentController,
-              style: const TextStyle(color: Color(0xFFE0E0E0)),
+              style: TextStyle(color: theme.colorScheme.onSurface),
               maxLines: 5,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 hintText: 'Содержание',
-                hintStyle: TextStyle(color: Color(0xFF888899)),
+                hintStyle: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5)),
               ),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Отмена', style: TextStyle(color: theme.colorScheme.onSurface))),
           TextButton(onPressed: _addNote, child: const Text('Сохранить', style: TextStyle(color: Color(0xFF4ADE80)))),
         ],
       ),
@@ -131,11 +133,13 @@ class _NotesScreenState extends ConsumerState<NotesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0F),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0A0A0F),
-        title: const Text('Заметки (.veilnote)'),
+        backgroundColor: theme.scaffoldBackgroundColor,
+        title: Text(l10n.notes),
         leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go('/chats')),
       ),
       floatingActionButton: FloatingActionButton(
@@ -144,8 +148,8 @@ class _NotesScreenState extends ConsumerState<NotesScreen> {
         child: const Icon(Icons.add, color: Color(0xFF0A0A0F)),
       ),
       body: _notes.isEmpty
-          ? const Center(
-              child: Text('Нет заметок', style: TextStyle(color: Color(0xFF888899), fontSize: 16)),
+          ? Center(
+              child: Text('Нет заметок', style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5), fontSize: 16)),
             )
           : ListView.builder(
               padding: const EdgeInsets.all(16),
@@ -153,11 +157,11 @@ class _NotesScreenState extends ConsumerState<NotesScreen> {
               itemBuilder: (context, index) {
                 final note = _notes[index];
                 return Card(
-                  color: const Color(0xFF1A1A26),
+                  color: theme.colorScheme.surface,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   child: ListTile(
-                    title: Text(note['title'] as String, style: const TextStyle(color: Color(0xFFE0E0E0))),
-                    subtitle: Text(note['date'] as String, style: const TextStyle(color: Color(0xFF888899))),
+                    title: Text(note['title'] as String, style: TextStyle(color: theme.colorScheme.onSurface)),
+                    subtitle: Text(note['date'] as String, style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.6))),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [

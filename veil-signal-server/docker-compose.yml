@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  # ============================================================
+  # 1. СИГНАЛЬНЫЙ СЕРВЕР VEIL (Go)
+  # ============================================================
+  veil-signal:
+    build: .
+    container_name: veil-signal-server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - DB_PATH=/app/data/veil_server.db
+      - TTL_SECONDS=300
+      - MAX_MESSAGES=1000
+      - RATE_LIMIT=300
+      - RATE_LIMIT_TIME=60
+    volumes:
+      - ./data:/app/data
+    command: ["./veil-server"]
+    networks:
+      - veil-network
+
+  # ============================================================
+  # 2. TURN СЕРВЕР (Coturn) — ДЛЯ ЛОКАЛЬНОЙ СЕТИ
+  # ============================================================
+  coturn:
+    image: coturn/coturn:latest
+    container_name: veil-turn-server
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - TURNSERVER_ENABLE_BASIC_AUTH=true
+      - TURNSERVER_REALM=veil.local
+      - TURNSERVER_USERS=veiluser:veilpass123
+    volumes:
+      - ./turn:/etc/coturn
+    command: >
+      -n
+      --log-file=stdout
+      --listening-ip=0.0.0.0
+      --listening-port=3478
+      --min-port=49152
+      --max-port=65535
+      --realm=veil.local
+      --user=veiluser:veilpass123
+      --no-tls
+      --no-dtls
+      --fingerprint
+      --lt-cred-mech
+    networks:
+      - veil-network
+
+networks:
+  veil-network:
+    driver: bridge

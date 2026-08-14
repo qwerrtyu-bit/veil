@@ -1,7 +1,9 @@
+// lib/screens/report_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import '../l10n/app_localizations.dart';
 
 class ReportScreen extends ConsumerStatefulWidget {
   final String contactId;
@@ -71,10 +73,14 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Пожаловаться'),
-        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.pop()),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.go('/chats'),
+        ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -97,11 +103,15 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Жалоба на: ${widget.contactName}',
-                              style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600)),
+                          Text(
+                            'Жалоба на: ${widget.contactName}',
+                            style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+                          ),
                           const SizedBox(height: 4),
-                          Text('Ваша личность в безопасности. Содержимое чата не будет раскрыто.',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600], fontSize: 12)),
+                          Text(
+                            'Ваша личность в безопасности. Содержимое чата не будет раскрыто.',
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600], fontSize: 12),
+                          ),
                         ],
                       ),
                     ),
@@ -109,7 +119,10 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                 ),
               ),
               const SizedBox(height: 32),
-              Text('Причина жалобы', style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600)),
+              Text(
+                'Причина жалобы',
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+              ),
               const SizedBox(height: 16),
               ..._reasons.entries.map((entry) {
                 final isSelected = _selectedReason == entry.key;

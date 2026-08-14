@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../l10n/app_localizations.dart';
 
 class FaqScreen extends ConsumerStatefulWidget {
   const FaqScreen({super.key});
@@ -69,12 +70,13 @@ class _FaqScreenState extends ConsumerState<FaqScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text('FAQ'),
+        title: Text(l10n.faq),
         leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go('/chats')),
       ),
       body: ListView.builder(

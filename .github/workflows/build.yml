@@ -1,15 +1,70 @@
-name: Build Windows EXE
+name: Veil CI/CD
 
 on:
   push:
-    branches: [main]
+    branches: [ main, master, develop ]
   pull_request:
-    branches: [main]
+    branches: [ main, master ]
 
 jobs:
-  build:
-    runs-on: windows-latest
+  # ============================================================
+  # 1. АНАЛИЗ КОДА (Flutter)
+  # ============================================================
+  flutter_analyze:
+    name: 🔍 Flutter Analyze
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: 'stable'
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Analyze code
+        run: flutter analyze
+
+  # ============================================================
+  # 2. ТЕСТЫ (Flutter)
+  # ============================================================
+  flutter_tests:
+    name: 🧪 Flutter Tests
+    runs-on: ubuntu-latest
+    needs: flutter_analyze
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: 'stable'
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Run tests
+        run: flutter test --coverage
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: coverage/lcov.info
+          fail_ci_if_error: false
+
+  # ============================================================
+  # 3. СБОРКА WINDOWS
+  # ============================================================
+  build_windows:
+    name: 🪟 Build Windows
+    runs-on: windows-latest
+    needs: flutter_tests
+    if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
 
@@ -28,8 +83,96 @@ jobs:
       - name: Build Windows
         run: flutter build windows --release
 
-      - name: Upload EXE
+      - name: Upload Windows EXE
         uses: actions/upload-artifact@v4
         with:
           name: veil-windows
           path: build/windows/runner/Release/
+
+  # ============================================================
+  # 4. СБОРКА WEB
+  # ============================================================
+  build_web:
+    name: 🌐 Build Web
+    runs-on: ubuntu-latest
+    needs: flutter_tests
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: 'stable'
+
+      - name: Enable Web
+        run: flutter config --enable-web
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build Web
+        run: flutter build web --release
+
+      - name: Upload Web build
+        uses: actions/upload-artifact@v4
+        with:
+          name: veil-web
+          path: build/web/
+
+  # ============================================================
+  # 5. СБОРКА ANDROID
+  # ============================================================
+  build_android:
+    name: 🤖 Build Android
+    runs-on: ubuntu-latest
+    needs: flutter_tests
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: 'stable'
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build Android
+        run: flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: veil-android
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+  # ============================================================
+  # 6. СБОРКА СЕРВЕРА (Go)
+  # ============================================================
+  build_server:
+    name: 🖥️ Build Go Server
+    runs-on: ubuntu-latest
+    needs: flutter_tests
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build Server
+        run: |
+          cd veil-signal-server
+          go build -o veil-server ./main.go
+
+      - name: Upload Server
+        uses: actions/upload-artifact@v4
+        with:
+          name: veil-server
+          path: veil-signal-server/veil-server
