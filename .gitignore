@@ -1,43 +1,138 @@
-# Miscellaneous
-*.class
-*.log
-*.pyc
-*.swp
-.DS_Store
-.atom/
-.buildlog/
-.history
-.svn/
-migrate_working_dir/
+# ============================================================
+# FLUTTER / DART
+# ============================================================
 
-# IntelliJ related
+*.aab
+*.apk
 *.iml
 *.ipr
 *.iws
-.idea/
-
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
-
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
+*.lock-ws
+*.pid
+*.swp
+*.vcs.xml
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+.DS_Store
 .dart_tool/
-.flutter-plugins
-.flutter-plugins-dependencies
+.idea/
 .pub-cache/
 .pub/
-/build/
+.vscode/
+build/
+coverage/
+pubspec.lock
+*.log
 
-# Symbolication related
-app.*.symbols
+# ============================================================
+# ГЕНЕРИРУЕМЫЕ ФАЙЛЫ
+# ============================================================
 
-# Obfuscation related
-app.*.map.json
+*.g.dart
+*.freezed.dart
+*.config.dart
+*.gr.dart
 
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
+# ============================================================
+# БАЗЫ ДАННЫХ
+# ============================================================
+
+*.db
+*.db-journal
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# ============================================================
+# СЕКРЕТЫ И КЛЮЧИ
+# ============================================================
+
+.env
+*.env
+*.env.local
+*.env.production
+firebase-adminsdk.json
+google-services.json
+GoogleService-Info.plist
+*.pem
+*.p12
+*.key
+*.crt
+*.veilbackup
+*.veilP
+api_keys.json
+*.jks
+*.keystore
+
+# ============================================================
+# СЕРВЕР (Go)
+# ============================================================
+
+veil-signal-server/veil-server
+veil-signal-server/veil-server.exe
+veil-signal-server/data/
+veil-signal-server/*.test
+veil-signal-server/coverage.out
+
+# ============================================================
+# TELEGRAM БОТ
+# ============================================================
+
+veil-telegram-bot/veil_requests.db
+veil-telegram-bot/data/
+veil-telegram-bot/__pycache__/
+veil-telegram-bot/*.pyc
+veil-telegram-bot/.pytest_cache/
+
+# ============================================================
+# ЛОГИ
+# ============================================================
+
+*.log
+logs/
+*.trace
+*.out
+
+# ============================================================
+# ОПЕРАЦИОННАЯ СИСТЕМА
+# ============================================================
+
+Thumbs.db
+Desktop.ini
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ============================================================
+# IDE
+# ============================================================
+
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+
+# ============================================================
+# ЗАГРУЗКИ И ВРЕМЕННЫЕ ФАЙЛЫ
+# ============================================================
+
+downloads/
+tmp/
+temp/
+*.tmp
+*.temp
+*.cache
+
+# ============================================================
+# ПРОЧЕЕ
+# ============================================================
+
+*.zip
+*.rar
+*.7z
+*.tar.gz
+*.tgz
+*.veilP
