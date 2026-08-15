@@ -43,16 +43,26 @@ func main() {
 	// ═══════════════════════════════════════════════════════
 	var fcmService *fcm.FCMService
 
+	// Получаем путь к ключу из переменной окружения
+	keyPath := os.Getenv("FIREBASE_KEY_PATH")
+	if keyPath == "" {
+		keyPath = "firebase-adminsdk.json" // fallback
+	}
+
+	// Логируем путь для отладки
+	log.Printf("🔍 Ищем ключ по пути: %s", keyPath)
+
 	// Проверяем, есть ли файл ключа
-	if _, err := os.Stat("firebase-adminsdk.json"); err == nil {
-		fcmService, err = fcm.NewFCMService("firebase-adminsdk.json")
+	if _, err := os.Stat(keyPath); err == nil {
+		fcmService, err = fcm.NewFCMService(keyPath)
 		if err != nil {
 			log.Printf("⚠️ FCM не инициализирован: %v", err)
 		} else {
 			log.Println("📱 FCM сервис инициализирован")
 		}
 	} else {
-		log.Println("⚠️ Файл firebase-adminsdk.json не найден, FCM отключён")
+		log.Printf("⚠️ Файл ключа не найден по пути: %s", keyPath)
+		log.Printf("💡 Убедитесь, что файл существует и путь указан правильно")
 	}
 
 	// Запуск фоновой очистки старых сообщений
@@ -82,15 +92,6 @@ func main() {
 	http.HandleFunc("/plugins", corsMiddleware(srv.PluginsHandler))
 	http.HandleFunc("/ack", corsMiddleware(srv.AckHandler))
 	http.HandleFunc("/fcm/register", corsMiddleware(srv.RegisterFCMHandler))
-	http.HandleFunc("/bots", corsMiddleware(srv.GetBotsHandler))
-	http.HandleFunc("/bots/create", corsMiddleware(srv.CreateBotHandler))
-	http.HandleFunc("/bots/message", corsMiddleware(srv.BotMessageHandler))
-	// Usernames
-	http.HandleFunc("/username/register", corsMiddleware(srv.RegisterUsernameHandler))
-	http.HandleFunc("/username/search", corsMiddleware(srv.SearchUsernamesHandler))
-	http.HandleFunc("/username/get", corsMiddleware(srv.GetUsernameHandler))
-	http.HandleFunc("/username/purchase", corsMiddleware(srv.PurchaseUsernameHandler))
-	http.HandleFunc("/username/premium", corsMiddleware(srv.GetPremiumUsernamesHandler))
 
 	// ============================================================
 	// WALLET
@@ -104,6 +105,22 @@ func main() {
 	// ============================================================
 	http.HandleFunc("/giftcard/create", corsMiddleware(srv.CreateGiftCardHandler))
 	http.HandleFunc("/giftcard/activate", corsMiddleware(srv.ActivateGiftCardHandler))
+
+	// ============================================================
+	// USERNAMES
+	// ============================================================
+	http.HandleFunc("/username/register", corsMiddleware(srv.RegisterUsernameHandler))
+	http.HandleFunc("/username/search", corsMiddleware(srv.SearchUsernamesHandler))
+	http.HandleFunc("/username/get", corsMiddleware(srv.GetUsernameHandler))
+	http.HandleFunc("/username/purchase", corsMiddleware(srv.PurchaseUsernameHandler))
+	http.HandleFunc("/username/premium", corsMiddleware(srv.GetPremiumUsernamesHandler))
+
+	// ============================================================
+	// BOTS
+	// ============================================================
+	http.HandleFunc("/bots", corsMiddleware(srv.GetBotsHandler))
+	http.HandleFunc("/bots/create", corsMiddleware(srv.CreateBotHandler))
+	http.HandleFunc("/bots/message", corsMiddleware(srv.BotMessageHandler))
 
 	// WebSocket
 	ws := server.NewWebSocketServer(srv)
